@@ -26,7 +26,7 @@ SELECT
     clin_sig, somatic, pubmed, motif_name, motif_pos, high_inf_pos,
     motif_score_change, impact, pick, variant_class, tsl, hgvs_offset, pheno,
     minimised, exac_af, exac_af_adj, exac_af_afr, exac_af_amr, exac_af_eas, exac_af_fin, exac_af_nfe, exac_af_oth, exac_af_sas,
-    gene_pheno, "filter", context, src_vcf_id, tumor_bam_uuid, normal_bam_uuid, case_id, gdc_filter, cosmic, mc3_overlap, gdc_validation_status,
+    gene_pheno, filter, context, src_vcf_id, tumor_bam_uuid, normal_bam_uuid, case_id, gdc_filter, cosmic, mc3_overlap, gdc_validation_status,
 	cancer_type, group_concat(caller, '|') AS callers
 FROM gdc
 GROUP BY
