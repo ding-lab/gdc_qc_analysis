@@ -33,13 +33,20 @@ def define_db_schema(metadata, mc3_maf, gdc_maf):
         Index('mc3_ix_tumor_uuid', 'tumor_sample_uuid'),
     )
 
-    gdc_columns = []
+    gdc_cols_integer = [
+        'start_position',
+        'end_position',
+    ]
+    gdc_cols = []
     for col in gdc_maf.columns:
-        c = Column(col, Text())
-        gdc_columns.append(c)
+        if col in gdc_cols_integer:
+            c = Column(col, Integer())
+        else:
+            c = Column(col, Text())
+        gdc_cols.append(c)
     Table(
         'gdc', metadata,
-        *gdc_columns,
+        *gdc_cols,
         Index('gdc_ix_tumor_barcode', 'tumor_sample_barcode'),
         Index('gdc_ix_tumor_uuid', 'tumor_sample_uuid'),
     )
