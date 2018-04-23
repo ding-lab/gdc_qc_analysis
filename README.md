@@ -2,6 +2,8 @@ Conda environment setup:
 
     conda create -n gdc_qc python=3.6 notebook matplotlib sqlalchmey pandas
 
+See README.liftOver for the instructions to generate GRCh38 converted MC3 MAF
+
 The script to generate the database:
 
 ```
