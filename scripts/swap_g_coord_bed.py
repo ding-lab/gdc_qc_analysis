@@ -26,7 +26,7 @@ def main(args):
     maf_reader = MC3MAF(Path(args.maf_pth))
     g_coord_reader = read_g_coord_conversion(args.new_coord_gz_pth)
     # Open the output file in the buffered mode
-    with open(args.out_pth, 'w', buffering=64 * 1024) as f:
+    with gzip.open(args.out_pth, 'wt') as f:
         # Write the original MAF header
         f.write(open(args.maf_pth).readline())
 
