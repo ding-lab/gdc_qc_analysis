@@ -28,7 +28,7 @@ def main(args):
     # Open the output file in the buffered mode
     with gzip.open(args.out_pth, 'wt') as f:
         # Write the original MAF header
-        f.write(open(args.maf_pth).readline())
+        f.write(gzip.open(args.maf_pth, 'rt').readline())
 
         for record, converted_g_coord in zip(maf_reader, g_coord_reader):
             new_chrom, new_start, new_end = converted_g_coord
