@@ -8,15 +8,15 @@ def read_g_coord_conversion(pth):
     FAILED_CONVERSION = "-1", -1, -1
     with gzip.open(pth, 'rt') as f:
         for line in f:
-            if 'Fail' in line:
-                yield FAILED_CONVERSION
-                continue
-            elif 'split' in line:
+            if 'split' in line:
                 # Read until we skip all the split'd records
                 while 'split' in line:
                     line = next(f)
                 yield FAILED_CONVERSION
                 # The while loop will break at the new record so we don't continue here
+            if 'Fail' in line:
+                yield FAILED_CONVERSION
+                continue
             *_, new_chrom, new_start, new_end = line[:-1].split('\t')
             # Convert back to 1-based coord
             yield new_chrom, int(new_start) + 1, int(new_end)
