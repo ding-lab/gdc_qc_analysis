@@ -1,22 +1,15 @@
 import argparse
-from collections import namedtuple
 import gzip
-
-
-def maf_reader(pth):
-    with open(pth) as f:
-        header = next(f)[:-1].split('\t')
-        # Generate the record based on the header
-        Record = namedtuple('Record', header)
-        for line in f:
-            yield Record._make(line[:-1].split('\t'))
+from pathlib import Path
+from maf_utils import MC3MAF
 
 
 def main(args):
-    with gzip.open(args.out_pth,'wt') as f:
-        for record in maf_reader(args.maf_pth):
+    maf_reader = MC3MAF(Path(args.maf_pth))
+    with gzip.open(args.out_pth, 'wt') as f:
+        for record in maf_reader:
             chrom, start, end = \
-                record.Chromosome, int(record.Start_Position), int(record.End_Position)
+                record.chromosome, int(record.start_position), int(record.end_position)
             # convert to 0-based half open interval
             start -= 1
             print(chrom, start, end, sep="\t", file=f)

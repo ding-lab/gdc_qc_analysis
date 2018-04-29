@@ -1,15 +1,7 @@
 import argparse
-from collections import namedtuple
 import gzip
-
-
-def maf_reader(pth):
-    with open(pth) as f:
-        header = next(f)[:-1].split('\t')
-        # Generate the record based on the header
-        Record = namedtuple('Record', header)
-        for line in f:
-            yield Record._make(line[:-1].split('\t'))
+from pathlib import Path
+from maf_utils import MC3MAF
 
 
 def read_g_coord_conversion(pth):
@@ -31,12 +23,14 @@ def read_g_coord_conversion(pth):
 
 
 def main(args):
+    maf_reader = MC3MAF(Path(args.maf_pth))
+    g_coord_reader = read_g_coord_conversion(args.new_coord_gz_pth)
     # Open the output file in the buffered mode
     with open(args.out_pth, 'w', buffering=64 * 1024) as f:
         # Write the original MAF header
         f.write(open(args.maf_pth).readline())
 
-        for record, converted_g_coord in zip(maf_reader(args.maf_pth), read_g_coord_conversion(args.new_coord_gz_pth)):
+        for record, converted_g_coord in zip(maf_reader, g_coord_reader):
             new_chrom, new_start, new_end = converted_g_coord
             if new_chrom == '-1':
                 # The conversion failed. And we SKIP THIS RECORD
@@ -44,10 +38,10 @@ def main(args):
 
             # Replace the MAF record with the new converted coord
             converted_record = record._replace(
-                NCBI_Build='GRCh38',
-                Chromosome=new_chrom,
-                Start_Position=new_start,
-                End_Position=new_end,
+                ncbi_build='GRCh38',
+                chromosome=new_chrom,
+                start_position=new_start,
+                end_position=new_end,
             )
             print(*converted_record, sep='\t', file=f)
 
