@@ -1,6 +1,7 @@
 configfile: 'config.yaml'
 
 from pathlib import Path
+from textwrap import dedent
 
 CANCER_TYPES = ['BRCA', 'COAD', 'LAML', 'OV']
 GDC_CALLERS = ['mutect', 'somaticsniper', 'muse', 'varscan']
@@ -78,17 +79,17 @@ rule make_db:
         sql_cmd = 'SELECT DISTINCT tumor_sample_barcode FROM gdc_grouped_callers'
         tumor_barcodes = sorted(t[0] for t in conn.execute(sql_cmd).fetchall())
 
-        TPL = '''\
+        SQL_TPL = dedent('''\
         DROP TABLE IF EXISTS mc3_selected;
         CREATE TABLE IF NOT EXISTS mc3_selected AS
         SELECT * FROM mc3
         WHERE tumor_sample_barcode IN ({sample_list});
         DROP TABLE mc3;
         VACUUM;
-        '''
+        ''')
         with open('scripts/mc3_select_samples.sql', 'w') as f:
             sample_list = ', '.join(f"'{v}'" for v in tumor_barcodes)
-            print(TPL.format(sample_list=sample_list), file=f)
+            print(SQL_TPL.format(sample_list=sample_list), file=f)
 
         shell('sqlite3 {output} < scripts/mc3_select_samples.sql')
 
