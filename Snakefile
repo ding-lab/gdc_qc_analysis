@@ -68,7 +68,7 @@ rule make_db:
         gdc_mafs=GDC_MAFS
     params:
         gdc_root=config['GDC_DATA_ROOT']
-    output: 'processed_data/variants.sqlite'
+    output: 'processed_data/all_variants.sqlite'
     run:
         shell("python scripts/make_db.py --db-url 'sqlite:///{output}' --mc3-maf {input.mc3_maf} --gdc-root {params.gdc_root}")
         shell('sqlite3 {output} < scripts/group_gdc_callers.sql')

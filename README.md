@@ -13,3 +13,6 @@ Now the pipeline is managed by Snakemake:
     snakemake -l            # List all the possible rules
     snakemake make_db       # Generate the variant database
     snakemake all           # Generate all output
+
+All the analysis notebooks are under `notebooks/`.
+Note that one must run `notebooks/Analysis.ipynb` after the database is generated.
