@@ -1,0 +1,9 @@
+MC3_MAF_PTHS:
+    public: '../GDC_QC_data/MC3/mc3.v0.2.8.PUBLIC.maf.gz'
+    controlled: '../GDC_QC_data/MC3/mc3.v0.2.8.CONTROLLED.CT.maf.gz'
+
+GDC_DATA_ROOT: '../GDC_QC_data/GDC_data_release/Release_10.0'
+
+CROSS_MAP_BIN: '~/miniconda3/envs/crossmap/bin/CrossMap.py'
+
+CHAIN_PTH: '../GDC_QC_data/liftOver_chains/GRCh37_to_GRCh38.chain.gz'

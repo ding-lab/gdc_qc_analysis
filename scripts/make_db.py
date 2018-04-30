@@ -7,7 +7,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.engine import Engine
 from sqlalchemy import event
-from scripts.maf_utils import GDCMAF, MC3MAF
+from maf_utils import GDCMAF, MC3MAF
 
 logger = logging.getLogger(__name__)
 BATCH_SIZE = 1000

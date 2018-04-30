@@ -1,17 +1,37 @@
+configfile: 'config.yaml'
+
 from pathlib import Path
 
+CANCER_TYPES = ['BRCA', 'COAD', 'LAML', 'OV']
+GDC_CALLERS = ['mutect', 'somaticsniper', 'muse', 'varscan']
 
-MC3_MAF_PTHS = {
-    'public': '../GDC_QC_data/MC3/mc3.v0.2.8.PUBLIC.maf.gz',
-    'controlled': '../GDC_QC_data/MC3/mc3.v0.2.8.CONTROLLED.CT.maf.gz'
-}
-CROSS_MAP_BIN = '~/miniconda3/envs/crossmap/bin/CrossMap.py'
-CHAIN_PTH = '../GDC_QC_data/liftOver_chains/GRCh37_to_GRCh38.chain.gz'
+
+def find_all_gdc_mafs(gdc_root: Path):
+    """Check if all the GDC MAFs exist."""
+    gdc_mafs = []
+    for cancer in CANCER_TYPES:
+        for caller in GDC_CALLERS:
+            try:
+                maf = next(gdc_root.glob(f'*/TCGA.{cancer}.{caller}.*.somatic.maf.gz'))
+            except StopIteration:
+                raise ValueError(f'Cannot find GDC MAF for {cancer} by {caller}')
+            gdc_mafs.append(maf)
+    return gdc_mafs
+
+GDC_MAFS = find_all_gdc_mafs(Path(config['GDC_DATA_ROOT']))
+
+
+def find_mc3_maf(wildcards):
+    """Return different MC3 MAFS
+
+    Now it can be different access type (public or control).
+    """
+    return config['MC3_MAF_PTHS'][wildcards.access_type]
 
 
 rule gen_g_coord_bed:
     """Generate coordinates only BED file."""
-    input: maf=lambda wildcards: MC3_MAF_PTHS[wildcards.access_type]
+    input: maf=find_mc3_maf
     output: 'processed_data/mc3.{access_type}.GRCh37.g_coords.gz'
     shell:
         'python scripts/gen_g_coord_bed.py {input.maf} {output}'
@@ -22,18 +42,19 @@ rule g_coords_b37_to_b38:
     input: 'processed_data/{name}.GRCh37.g_coords.gz'
     output: 'processed_data/{name}.GRCh38.g_coords.gz'
     params:
-        crossmap_bin=CROSS_MAP_BIN,
-        chain_file=CHAIN_PTH
+        crossmap_bin=config['CROSS_MAP_BIN'],
+        chain_file=config['CHAIN_PTH']
     shell:
         '''
         {params.crossmap_bin} bed {params.chain_file} {input} \
             | gzip -c > {output}
         '''
 
+
 rule swap_maf_g_coords:
     """Replace the MAF file with GRCh38 coordinates."""
     input:
-        maf=lambda wildcards: MC3_MAF_PTHS[wildcards.access_type],
+        maf=find_mc3_maf,
         g_coords='processed_data/mc3.{access_type}.GRCh38.g_coords.gz'
     output: 'processed_data/mc3.{access_type}.converted.GRCh38.maf.gz'
     shell:
@@ -43,4 +64,4 @@ rule swap_maf_g_coords:
 rule all:
     input:
         'processed_data/mc3.public.converted.GRCh38.maf.gz',
-        'processed_data/mc3.controlled.converted.GRCh38.maf.gz'
+        # 'processed_data/mc3.controlled.converted.GRCh38.maf.gz'

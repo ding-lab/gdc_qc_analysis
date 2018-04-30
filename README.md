@@ -2,6 +2,11 @@ Conda environment setup:
 
     conda create -n gdc_qc python=3.6 notebook matplotlib sqlalchmey pandas
 
+And a different env for crossmap (since it uses Python 2.7):
+
+    conda create -y -n crossmap crossmap
+
+
 See README.liftOver for the instructions to generate GRCh38 converted MC3 MAF
 
 The script to generate the database:
