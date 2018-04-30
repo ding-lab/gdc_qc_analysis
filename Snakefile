@@ -61,6 +61,37 @@ rule swap_maf_g_coords:
         'python scripts/swap_g_coord_bed.py {input.maf} {input.g_coords} {output}'
 
 
+rule make_db:
+    """Generate the SQLite database."""
+    input:
+        mc3_maf='processed_data/mc3.public.converted.GRCh38.maf.gz',
+        gdc_mafs=GDC_MAFS
+    params:
+        gdc_root=config['GDC_DATA_ROOT']
+    output: 'processed_data/variants.sqlite'
+    run:
+        shell("python scripts/make_db.py --db-url 'sqlite:///{output}' --mc3-maf {input.mc3_maf} --gdc-root {params.gdc_root}")
+        shell('sqlite {output} < scripts/group_gdc_callers.sql')
+
+        import sqlite3
+        conn = sqlite3.connect(output[0])
+        sql_cmd = 'SELECT DISTINCT tumor_sample_barcode FROM gdc_grouped_callers'
+        tumor_barcodes = sorted(t[0] for t in conn.execute(sql_cmd).fetchall())
+
+        TPL = '''\
+        DROP TABLE IF EXISTS mc3_selected;
+        CREATE TABLE IF NOT EXISTS mc3_selected AS
+        SELECT * FROM mc3
+        WHERE tumor_sample_barcode IN ({sample_list});
+        DROP TABLE mc3;
+        VACUUM;
+        '''
+        with open('scripts/mc3_select_samples.sql', 'w') as f:
+            sample_list = ', '.join(f"'{v}'" for v in tumor_barcodes)
+            print(TPL.format(sample_list=sample_list), file=f)
+
+        shell('sqlite {output} < scripts/mc3_select_samples.sql')
+
 rule all:
     input:
         'processed_data/mc3.public.converted.GRCh38.maf.gz',
