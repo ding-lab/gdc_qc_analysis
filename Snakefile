@@ -10,7 +10,7 @@ CHAIN_PTH = '../GDC_QC_data/liftOver_chains/GRCh37_to_GRCh38.chain.gz'
 
 
 rule gen_g_coord_bed:
-    """Generate coordinate only BED file."""
+    """Generate coordinates only BED file."""
     input: maf=lambda wildcards: MC3_MAF_PTHS[wildcards.access_type]
     output: 'processed_data/mc3.{access_type}.GRCh37.g_coords.gz'
     shell:
@@ -18,6 +18,7 @@ rule gen_g_coord_bed:
 
 
 rule g_coords_b37_to_b38:
+    """Convert coordinates from GRCh37 to GRCh38."""
     input: 'processed_data/{name}.GRCh37.g_coords.gz'
     output: 'processed_data/{name}.GRCh38.g_coords.gz'
     params:
@@ -30,12 +31,14 @@ rule g_coords_b37_to_b38:
         '''
 
 rule swap_maf_g_coords:
+    """Replace the MAF file with GRCh38 coordinates."""
     input:
         maf=lambda wildcards: MC3_MAF_PTHS[wildcards.access_type],
         g_coords='processed_data/mc3.{access_type}.GRCh38.g_coords.gz'
     output: 'processed_data/mc3.{access_type}.converted.GRCh38.maf.gz'
     shell:
         'python scripts/swap_g_coord_bed.py {input.maf} {input.g_coords} {output}'
+
 
 rule all:
     input:
