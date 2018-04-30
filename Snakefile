@@ -71,7 +71,7 @@ rule make_db:
     output: 'processed_data/variants.sqlite'
     run:
         shell("python scripts/make_db.py --db-url 'sqlite:///{output}' --mc3-maf {input.mc3_maf} --gdc-root {params.gdc_root}")
-        shell('sqlite {output} < scripts/group_gdc_callers.sql')
+        shell('sqlite3 {output} < scripts/group_gdc_callers.sql')
 
         import sqlite3
         conn = sqlite3.connect(output[0])
@@ -90,7 +90,7 @@ rule make_db:
             sample_list = ', '.join(f"'{v}'" for v in tumor_barcodes)
             print(TPL.format(sample_list=sample_list), file=f)
 
-        shell('sqlite {output} < scripts/mc3_select_samples.sql')
+        shell('sqlite3 {output} < scripts/mc3_select_samples.sql')
 
 rule all:
     input:
