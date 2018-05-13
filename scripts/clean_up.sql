@@ -1,2 +1,3 @@
 DROP TABLE mc3;
+DROP TABLE gdc;
 VACUUM;

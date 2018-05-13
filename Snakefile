@@ -71,10 +71,10 @@ rule make_db:
     output: 'processed_data/all_variants.sqlite'
     run:
         shell("python scripts/make_db.py --db-url 'sqlite:///{output}' --mc3-maf {input.mc3_maf} --gdc-root {params.gdc_root}")
-        shell('sqlite3 {output} < scripts/group_gdc_callers.sql')
-        shell('sqlite3 {output} < scripts/subset_samples.sql')
+        shell('sqlite3 -echo {output} < scripts/group_gdc_callers.sql')
+        shell('sqlite3 -echo {output} < scripts/subset_samples.sql')
         shell("python scripts/create_overlap_table.py --db-pth {output}")
-        shell('sqlite3 {output} < scripts/clean_up.sql')
+        shell('sqlite3 -echo {output} < scripts/clean_up.sql')
 
 rule all:
     input:
