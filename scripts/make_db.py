@@ -2,11 +2,11 @@ import argparse
 import logging
 from pathlib import Path
 from sqlalchemy import (
-    create_engine,
-    MetaData, Table, Column, Integer, Text, Index
+    create_engine, event,
+    MetaData, Table, Column, Integer, Text, Index,
+    UniqueConstraint
 )
 from sqlalchemy.engine import Engine
-from sqlalchemy import event
 from maf_utils import GDCMAF, MC3MAF
 
 logger = logging.getLogger(__name__)
@@ -17,7 +17,8 @@ def define_db_schema(metadata, mc3_maf, gdc_maf):
     mc3_cols_integer = [
         'start_position',
         'end_position',
-        'strand_vep'
+        'strand_vep',
+        'raw_file_line_number',
     ]
     mc3_cols = []
     for col in mc3_maf.columns:
@@ -30,12 +31,14 @@ def define_db_schema(metadata, mc3_maf, gdc_maf):
         'mc3', metadata,
         *mc3_cols,
         Index('mc3_ix_tumor_barcode', 'tumor_sample_barcode'),
-        Index('mc3_ix_tumor_uuid', 'tumor_sample_uuid'),
+        # Unique constraint
+        UniqueConstraint('raw_file_line_number'),
     )
 
     gdc_cols_integer = [
         'start_position',
         'end_position',
+        'raw_file_line_number',
     ]
     gdc_cols = []
     for col in gdc_maf.columns:
@@ -48,7 +51,8 @@ def define_db_schema(metadata, mc3_maf, gdc_maf):
         'gdc', metadata,
         *gdc_cols,
         Index('gdc_ix_tumor_barcode', 'tumor_sample_barcode'),
-        Index('gdc_ix_tumor_uuid', 'tumor_sample_uuid'),
+        # Unique constraint
+        UniqueConstraint('cancer_type', 'caller', 'raw_file_line_number'),
     )
 
 

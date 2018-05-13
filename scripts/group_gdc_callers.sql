@@ -1,3 +1,5 @@
+-- Group GDC variants by callers
+-- The same variant from different callers will be merged together.
 DROP TABLE IF EXISTS gdc_grouped_callers;
 CREATE TABLE IF NOT EXISTS gdc_grouped_callers AS
 SELECT
@@ -27,10 +29,12 @@ SELECT
     motif_score_change, impact, pick, variant_class, tsl, hgvs_offset, pheno,
     minimised, exac_af, exac_af_adj, exac_af_afr, exac_af_amr, exac_af_eas, exac_af_fin, exac_af_nfe, exac_af_oth, exac_af_sas,
     gene_pheno, filter, context, src_vcf_id, tumor_bam_uuid, normal_bam_uuid, case_id, gdc_filter, cosmic, mc3_overlap, gdc_validation_status,
-	cancer_type, group_concat(caller, '|') AS callers
+    cancer_type, group_concat(caller, '|') AS callers, group_concat(raw_file_line_number, ',') AS raw_file_line_number_per_caller
 FROM gdc
 GROUP BY
     chromosome, start_position, end_position, strand,
     tumor_seq_allele1, tumor_seq_allele2,
     tumor_sample_barcode, matched_norm_sample_barcode
 ORDER BY tumor_sample_barcode, chromosome, start_position;
+
+CREATE INDEX ix_gdc_group_callers_tumor_barcode ON gdc_grouped_callers (tumor_sample_barcode);

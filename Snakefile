@@ -1,7 +1,6 @@
 configfile: 'config.yaml'
 
 from pathlib import Path
-from textwrap import dedent
 
 CANCER_TYPES = ['BRCA', 'COAD', 'LAML', 'OV']
 GDC_CALLERS = ['mutect', 'somaticsniper', 'muse', 'varscan']
@@ -73,25 +72,9 @@ rule make_db:
     run:
         shell("python scripts/make_db.py --db-url 'sqlite:///{output}' --mc3-maf {input.mc3_maf} --gdc-root {params.gdc_root}")
         shell('sqlite3 {output} < scripts/group_gdc_callers.sql')
-
-        import sqlite3
-        conn = sqlite3.connect(output[0])
-        sql_cmd = 'SELECT DISTINCT tumor_sample_barcode FROM gdc_grouped_callers'
-        tumor_barcodes = sorted(t[0] for t in conn.execute(sql_cmd).fetchall())
-
-        SQL_TPL = dedent('''\
-        DROP TABLE IF EXISTS mc3_selected;
-        CREATE TABLE IF NOT EXISTS mc3_selected AS
-        SELECT * FROM mc3
-        WHERE tumor_sample_barcode IN ({sample_list});
-        DROP TABLE mc3;
-        VACUUM;
-        ''')
-        with open('scripts/mc3_select_samples.sql', 'w') as f:
-            sample_list = ', '.join(f"'{v}'" for v in tumor_barcodes)
-            print(SQL_TPL.format(sample_list=sample_list), file=f)
-
-        shell('sqlite3 {output} < scripts/mc3_select_samples.sql')
+        shell('sqlite3 {output} < scripts/subset_samples.sql')
+        shell("python scripts/create_overlap_table.py --db-pth {output}")
+        shell('sqlite3 {output} < scripts/clean_up.sql')
 
 rule all:
     input:
