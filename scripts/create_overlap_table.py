@@ -87,10 +87,11 @@ def main(db_pth):
     ;
 
     CREATE INDEX ix_full_overlap_tumor_sample_barcode ON full_overlap (tumor_sample_barcode);
-    CREATE INDEX ix_full_overlap_genom_range ON full_overlap (
-        chromosome, start_position, end_position DESC
-    );
-    ''')
+    '''
+    # CREATE INDEX ix_full_overlap_genom_range ON full_overlap (
+    #     chromosome, start_position, end_position DESC
+    # );
+    )
 
 
 def setup_cli():
