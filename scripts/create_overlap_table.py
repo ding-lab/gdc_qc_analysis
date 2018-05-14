@@ -14,7 +14,7 @@ FIELDS_TO_REPORT = '''\
     g.hgvsp AS gdc_hgvsp,
     m.hgvsp AS mc3_hgvsp,
     g.hgvsc AS gdc_hgvsc,
-    m.hgvsc AS gdc_hgvsc,
+    m.hgvsc AS mc3_hgvsc,
     (CASE WHEN g.exon='.' THEN NULL ELSE g.exon END) AS gdc_exon,
     (CASE WHEN m.exon='.' THEN NULL ELSE m.exon END) AS mc3_exon,
     g.variant_classification AS gdc_variant_classification,
