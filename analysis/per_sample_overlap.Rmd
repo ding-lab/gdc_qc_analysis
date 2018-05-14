@@ -2,9 +2,7 @@
 title: "Per sample overlap analysis"
 author: "Liang-Bo Wang"
 date: '2018-05-14'
-output:
-  html_document:
-    df_print: paged
+output: html_notebook
 ---
 
 ```{r setup, include=FALSE}
