@@ -85,7 +85,7 @@ def load_maf(conn, metadata, maf, db_table):
 def main(db_url, mc3_maf_pth, gdc_root):
     # Read all MAFs
     mc3_maf = MC3MAF(Path(mc3_maf_pth))
-    gdc_maf_pths = list(Path(gdc_root).glob('*/TCGA*.maf.gz'))
+    gdc_maf_pths = list(Path(gdc_root).glob('*/TCGA.*.somatic.maf.gz'))
     gdc_mafs = [GDCMAF(pth) for pth in gdc_maf_pths]
 
     # Create database schema
