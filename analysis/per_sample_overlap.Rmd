@@ -1,0 +1,186 @@
+---
+title: "Per sample overlap analysis"
+author: "Liang-Bo Wang"
+date: '2018-05-14'
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(DBI)
+library(RSQLite)
+```
+
+Connect to the SQLite database.
+```{r}
+conn = dbConnect(RSQLite::SQLite(), dbname='../processed_data/all_variants.sqlite')
+dbListTables(conn)
+```
+
+Tweak SQLite caching strategy to use more memory (about 4GB).
+```{r, results='hide'}
+dbExecute(conn, 'PRAGMA cache_size=-4192000')
+dbExecute(conn, 'PRAGMA temp_store=MEMORY')
+```
+
+Read full overlap table into memory.
+```{r}
+overlap_tbl <- as.tibble(dbReadTable(conn, 'full_overlap'))
+```
+
+## Per sample overlap
+
+Compute the per sample overlap.
+```{r}
+per_sample_overlap <- group_by(overlap_tbl, tumor_sample_barcode) %>%
+    summarize(
+        n_shared = sum(shared_by_gdc_mc3),
+        n_mc3_unique = sum(only_in_mc3),
+        n_gdc_unique = sum(only_in_gdc),
+        n_total = n(),
+        cancer_type = cancer_type[1]  # same for all rows of a sample
+    ) %>%
+    mutate(
+        mc3_shared_percent = n_shared / (n_mc3_unique + n_shared),
+        gdc_shared_percent = n_shared / (n_gdc_unique + n_shared)
+    ) %>% 
+    arrange(cancer_type)
+
+write_tsv(per_sample_overlap, '~/Box Sync/Ding_Lab/Projects_Current/GDC-QC/Results/per_sample_overlap.tsv')
+```
+
+
+## Scatter Plot
+
+```{r, fig.width=9, fig.asp=0.9, fig.dpi=144}
+ggplot(per_sample_overlap, aes(x=gdc_shared_percent, y=mc3_shared_percent, size=n_total)) +
+    geom_point(alpha=0.65) + 
+    scale_x_continuous(name="GDC shared calls", labels = scales::percent) +
+    scale_y_continuous(name="MC3 shared calls", labels = scales::percent) + 
+    scale_color_discrete(name="Cancer type") + 
+    scale_size_area(name="Total calls", max_size = 5, breaks = c(10, 100, 1000, 10000), trans='sqrt') + 
+    facet_wrap(~ cancer_type, nrow = 2) +
+    theme_bw() + 
+    labs(title = "Somatic variant call overlap per sample")
+```
+
+```{r, results='hide'}
+ggsave('~/Box Sync/Ding_Lab/Projects_Current/GDC-QC/Figures/GDC_MC3_overlap_per_sample.exact_match.pdf', width = 9, height = 8.5)
+```
+
+### Outliers 
+
+Find the outlier samples in the scatter plot.
+```{r}
+# BRCA bottom right two samples
+per_sample_overlap %>%
+    filter(cancer_type == 'BRCA' & gdc_shared_percent > 0.6 & mc3_shared_percent < 0.12)
+
+# BRCA top left one sample
+per_sample_overlap %>%
+    filter(cancer_type == 'BRCA' & gdc_shared_percent < 0.1 & mc3_shared_percent > 0.8)
+
+# COAD top left two samples
+per_sample_overlap %>%
+    filter(cancer_type == 'COAD' & gdc_shared_percent < 0.15 & mc3_shared_percent > 0.8)
+
+# OV middle left biggest sample
+per_sample_overlap %>%
+    filter(cancer_type == 'OV' & gdc_shared_percent < 0.14 & mc3_shared_percent > 0.5) %>%
+    arrange(-n_total) %>%
+    head(1)
+
+# OV bottom right two samples
+per_sample_overlap %>%
+    filter(cancer_type == 'OV' & gdc_shared_percent > 0.48 & mc3_shared_percent < 0.10)
+```
+
+
+### BRCA top left samples
+```{r}
+samples <- per_sample_overlap %>% filter(cancer_type == 'BRCA' & mc3_shared_percent > 0.8 & gdc_shared_percent < 0.1)
+print(samples)
+
+variants_tbl <- overlap_tbl %>% 
+    filter(tumor_sample_barcode %in% samples$tumor_sample_barcode)
+
+variants_tbl %>%
+    filter(only_in_gdc > 0) %>%
+    group_by(gdc_callers) %>%
+    summarise(n = n()) %>%
+    arrange(-n)
+
+mutect_only_tbl <- variants_tbl %>% filter(only_in_gdc > 0 & gdc_callers == 'mutect')
+mutect_only_tbl %>%
+    group_by(gdc_variant_type) %>%
+    summarise(n = n()) %>%
+    arrange(-n)
+
+mutect_only_tbl %>%
+    group_by(gdc_gdc_filter) %>%
+    summarise(n = n()) %>%
+    arrange(-n)
+```
+
+Most GDC unique calls are by MuTect and many of the unique calls are INDELs.
+
+
+#### COAD top left
+```{r}
+samples <- per_sample_overlap %>% filter(cancer_type == 'COAD' & mc3_shared_percent > 0.8 & gdc_shared_percent < 0.15)
+print(samples)
+variants_tbl <- overlap_tbl %>% filter(tumor_sample_barcode %in% samples$tumor_sample_barcode)
+variants_tbl %>% 
+    filter(only_in_gdc > 0) %>%
+    group_by(gdc_gdc_filter, gdc_callers) %>%
+    summarise(n = n()) %>%
+    arrange(-n)
+```
+
+Most GDC unique calls are by MuTect. One sample is labeled as wga_pair, but still the other sample contributes many MuTect uniuqe calls in GDC.
+
+
+#### OV bottom middle
+```{r}
+samples <- per_sample_overlap %>% filter(cancer_type == 'OV' & mc3_shared_percent < .1)
+print(samples)
+
+variants_tbl <- overlap_tbl %>% filter(tumor_sample_barcode %in% samples$tumor_sample_barcode)
+variants_tbl %>% 
+    filter(only_in_mc3 > 0) %>%
+    group_by(mc3_filter) %>%
+    summarise(n = n()) %>%
+    arrange(-n)
+
+
+variants_tbl %>%
+    filter(only_in_mc3 > 0) %>%
+    group_by(tumor_sample_barcode, mc3_callers, mc3_filter) %>%
+    summarize(n = n()) %>% arrange(-n)
+```
+
+Most unique MC3 calls are from RADIA + VarscanS with oxog filter and INDELOCATOR* + PINDEL with wga filter.
+
+
+### Group GDC unique calls
+```{r}
+gdc_unique_calls_tbl <- overlap_tbl %>% 
+    filter(only_in_gdc > 0) 
+
+gdc_unique_dup_tbl <- gdc_unique_calls_tbl %>%
+    distinct(
+        tumor_sample_barcode, chromosome, start_position, end_position, 
+        gdc_tumor_seq_allele1, tumor_seq_allele2, 
+        .keep_all = TRUE
+    ) %>%
+    group_by(chromosome, start_position, end_position, tumor_sample_barcode) %>%
+    filter(n() > 1)
+
+nrow(gdc_unique_dup_tbl)
+
+head(gdc_unique_dup_tbl, 20)
+```
+
