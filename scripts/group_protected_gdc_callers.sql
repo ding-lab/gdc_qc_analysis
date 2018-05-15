@@ -1,6 +1,5 @@
 -- Group GDC variants by callers
 PRAGMA cache_size=-8394000;
-PRAGMA temp_store=MEMORY;
 
 -- The same variant from different callers will be merged together.
 DROP TABLE IF EXISTS gdc_protected_grouped;
