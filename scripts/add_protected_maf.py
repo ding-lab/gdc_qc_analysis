@@ -4,7 +4,6 @@ from pathlib import Path
 from sqlalchemy import (
     create_engine, event,
     MetaData, Table, Column, Integer, Text, Index,
-    UniqueConstraint
 )
 from sqlalchemy.engine import Engine
 from maf_utils import GDCMAF, MC3MAF
@@ -31,8 +30,6 @@ def define_db_schema(metadata, mc3_maf, gdc_maf):
         'mc3_protected', metadata,
         *mc3_cols,
         Index('mc3_ix_tumor_barcode', 'tumor_sample_barcode'),
-        # Unique constraint
-        UniqueConstraint('raw_file_line_number'),
     )
 
     gdc_cols_integer = [
@@ -51,8 +48,6 @@ def define_db_schema(metadata, mc3_maf, gdc_maf):
         'gdc_protected', metadata,
         *gdc_cols,
         Index('gdc_ix_tumor_barcode', 'tumor_sample_barcode'),
-        # Unique constraint
-        UniqueConstraint('cancer_type', 'caller', 'raw_file_line_number'),
     )
 
 
