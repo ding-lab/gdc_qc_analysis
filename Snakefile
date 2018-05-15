@@ -6,20 +6,21 @@ CANCER_TYPES = ['BRCA', 'COAD', 'LAML', 'OV']
 GDC_CALLERS = ['mutect', 'somaticsniper', 'muse', 'varscan']
 
 
-def find_all_gdc_mafs(gdc_root: Path):
+def find_all_gdc_mafs(gdc_root: Path, file_type='somatic'):
     """Check if all the GDC MAFs exist."""
     gdc_mafs = []
     for cancer in CANCER_TYPES:
         for caller in GDC_CALLERS:
             try:
-                maf = next(gdc_root.glob(f'*/TCGA.{cancer}.{caller}.*.somatic.maf.gz'))
+                maf = next(gdc_root.glob(f'*/TCGA.{cancer}.{caller}.*.{file_type}.maf.gz'))
             except StopIteration:
                 raise ValueError(f'Cannot find GDC MAF for {cancer} by {caller}')
             gdc_mafs.append(maf)
     return gdc_mafs
 
 GDC_MAFS = find_all_gdc_mafs(Path(config['GDC_DATA_ROOT']))
-
+GDC_PROTECTED_MAFS = find_all_gdc_mafs(
+    Path(config['GDC_DATA_ROOT']), 'protected')
 
 def find_mc3_maf(wildcards):
     """Return different MC3 MAFS
@@ -75,6 +76,20 @@ rule make_db:
         shell('sqlite3 -echo {output} < scripts/subset_samples.sql')
         shell("python scripts/create_overlap_table.py --db-pth {output}")
         shell('sqlite3 -echo {output} < scripts/clean_up.sql')
+
+rule add_protected_mafs_to_db:
+    """Add protected MAFs into SQLite database."""
+    input:
+        mc3_maf='processed_data/mc3.controlled.converted.GRCh38.maf.gz',
+        gdc_mafs=GDC_MAFS
+        db=rules.make_db.output[0]
+    output:
+        'processed_data/db_state/has_added_protected_mafs'
+    params:
+        gdc_root=config['GDC_DATA_ROOT']
+    run:
+        shell("python scripts/add_protected_maf.py --db-url 'sqlite:///{input.db}' --mc3-maf {input.mc3_maf} --gdc-root {params.gdc_root}")
+        shell("touch {output}")
 
 rule all:
     input:
