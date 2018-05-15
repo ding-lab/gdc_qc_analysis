@@ -37,6 +37,6 @@ GROUP BY
     chromosome, start_position, end_position, strand,
     tumor_seq_allele1, tumor_seq_allele2,
     tumor_sample_barcode, matched_norm_sample_barcode
-ORDER BY tumor_sample_barcode, chromosome, start_position;
+;
 
-CREATE INDEX ix_gdc_protected_tumor_barcode ON gdc_protected (tumor_sample_barcode);
+CREATE INDEX ix_gdc_protected_grouped_tumor_sample_barcode ON gdc_protected_grouped (tumor_sample_barcode);
