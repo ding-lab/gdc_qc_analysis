@@ -29,7 +29,7 @@ def define_db_schema(metadata, mc3_maf, gdc_maf):
     Table(
         'mc3_protected', metadata,
         *mc3_cols,
-        Index('mc3_ix_tumor_barcode', 'tumor_sample_barcode'),
+        Index('ix_mc3_protected_tumor_barcode', 'tumor_sample_barcode'),
     )
 
     gdc_cols_integer = [
@@ -47,7 +47,7 @@ def define_db_schema(metadata, mc3_maf, gdc_maf):
     Table(
         'gdc_protected', metadata,
         *gdc_cols,
-        Index('gdc_ix_tumor_barcode', 'tumor_sample_barcode'),
+        Index('ix_gdc_protected_tumor_barcode', 'tumor_sample_barcode'),
     )
 
 
