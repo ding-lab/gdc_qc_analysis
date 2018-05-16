@@ -43,7 +43,7 @@ INNER JOIN mc3_protected m
 
 CREATE TABLE IF NOT EXISTS mc3_recoverable_unique AS
 SELECT 
-    mu.*
+    mu.*,
     g.tumor_seq_allele1 AS gdc_tumor_seq_allele1,
     g.t_depth_per_caller AS gdc_t_depth_per_caller,
     g.t_ref_count_per_caller AS gdc_t_ref_count_per_caller,
