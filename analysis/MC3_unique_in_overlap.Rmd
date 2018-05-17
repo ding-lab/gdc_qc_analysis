@@ -21,7 +21,17 @@ overlap_tbl <- as.tibble(dbReadTable(conn, 'full_overlap'))
 
 Select the variant calls unique in MC3.
 ```{r}
-mc3_unique_tbl <- overlap_tbl %>% filter(only_in_mc3 == 1)
+mc3_unique_tbl <- overlap_tbl %>% 
+    filter(only_in_mc3 == 1) %>%
+    mutate(
+        mc3_by_muse = as.integer(str_detect(mc3_callers, 'MUSE')),
+        mc3_by_mutect = as.integer(str_detect(mc3_callers, 'MUTECT')),
+        mc3_by_somaticsniper = as.integer(str_detect(mc3_callers, 'SOMATICSNIPER')),
+        mc3_by_radia = as.integer(str_detect(mc3_callers, 'RADIA')),
+        mc3_by_varscan = as.integer(str_detect(mc3_callers, 'VARSCAN')),
+        mc3_by_pindel = as.integer(str_detect(mc3_callers, 'PINDEL')),
+        mc3_by_indelocator = as.integer(str_detect(mc3_callers, 'INDELOCATOR'))
+    )
 ```
 
 
@@ -31,49 +41,21 @@ mc3_unique_tbl <- overlap_tbl %>% filter(only_in_mc3 == 1)
 mc3_unique_callers <- mc3_unique_tbl %>% 
     group_by(mc3_callers) %>%
     summarize(n = n()) %>% arrange(-n)
+mc3_unique_callers
 ```
 
 
 ```{r}
-mc3_unrecoverable_unique_callers <- as.tibble(dbGetQuery(
-    conn,
-    'WITH mc3_unique_unique AS (
-        SELECT * FROM full_overlap 
-        WHERE only_in_mc3=1 
-          AND rowid NOT IN (SELECT DISTINCT overlap_rowid FROM mc3_recoverable_unique)
-     )
-     SELECT mc3_callers, count(*) AS n 
-     FROM mc3_unique_unique 
-     GROUP BY mc3_callers 
-     ORDER BY n DESC'
-))
-```
-
-
-```{r}
-callers_tbl <- mc3_unrecoverable_unique_callers %>%
-    rename(unrecoverable_n = n) %>% 
-    full_join(mc3_unique_callers, by = "mc3_callers") %>%
-    arrange(-n)
-callers_tbl
-```
-
-```{r}
-callers_tbl %>%
-    filter(str_detect(mc3_callers, 'PINDEL')) %>%
-    summarize(unrecoverable_n = sum(unrecoverable_n, na.rm = TRUE), n = sum(n))
-```
-
-```{r}
-without_pindel_tbl <- mc3_unique_tbl %>%
-    filter(!str_detect(mc3_callers, 'PINDEL')) %>%
-    group_by(mc3_filter) %>%
-    summarize(without_pindel_n = n()) %>% arrange(-without_pindel_n)
-
 mc3_unique_tbl %>%
-    group_by(mc3_filter) %>%
+    group_by(mc3_variant_type) %>%
     summarize(n = n()) %>% arrange(-n) %>%
-    full_join(without_pindel_tbl, by = "mc3_filter") %>%
+    full_join(
+        mc3_unique_tbl %>%
+        filter(mc3_by_indelocator == 1 | mc3_by_pindel == 1) %>% 
+        group_by(mc3_variant_type) %>%
+        summarize(without_indel_callers_n = n()) %>% arrange(-without_indel_callers_n),
+        by = "mc3_variant_type"
+    ) %>%
     full_join(
         as.tibble(dbGetQuery(
             conn,
@@ -82,12 +64,63 @@ mc3_unique_tbl %>%
                 WHERE only_in_mc3=1 
                   AND rowid NOT IN (SELECT DISTINCT overlap_rowid FROM mc3_recoverable_unique)
              )
-             SELECT mc3_filter, count(*) AS unrecoverable_n 
+             SELECT mc3_variant_type, count(*) AS unrecoverable_n 
              FROM mc3_unique_unique 
-             GROUP BY mc3_filter
+             GROUP BY mc3_variant_type 
              ORDER BY unrecoverable_n DESC'
         )),
-        by = "mc3_filter"
-    )
+        by = "mc3_variant_type"
+    ) %>%
+    summarize(sum(n), sum(without_indel_callers_n), sum(unrecoverable_n))
+```
+
+
+
+```{r}
+callers_tbl <- as.tibble(dbGetQuery(
+    conn,
+    'WITH mc3_unique_unique AS (
+        SELECT * FROM full_overlap 
+        WHERE only_in_mc3=1 
+          AND rowid NOT IN (SELECT DISTINCT overlap_rowid FROM mc3_recoverable_unique)
+     )
+     SELECT mc3_variant_type, count(*) AS n 
+     FROM mc3_unique_unique 
+     GROUP BY mc3_variant_type 
+     ORDER BY n DESC'
+)) %>%
+    rename(unrecoverable_n = n) %>% 
+    full_join(mc3_unique_callers, by = "mc3_callers") %>%
+    arrange(-n)
+callers_tbl
+```
+
+
+```{r}
+type_filter_tbl <- mc3_unique_tbl %>%
+    group_by(mc3_variant_type, mc3_filter) %>%
+    summarize(n = n()) %>% arrange(-n) %>%
+    full_join(
+        as.tibble(dbGetQuery(
+            conn,
+            'WITH mc3_unique_unique AS (
+                SELECT * FROM full_overlap 
+                WHERE only_in_mc3=1 
+                  AND rowid NOT IN (SELECT DISTINCT overlap_rowid FROM mc3_recoverable_unique)
+             )
+             SELECT mc3_variant_type, mc3_filter, count(*) AS unrecoverable_n 
+             FROM mc3_unique_unique 
+             GROUP BY mc3_variant_type, mc3_filter
+             ORDER BY unrecoverable_n DESC'
+        )),
+        by = c("mc3_variant_type", "mc3_filter")
+    ) %>%
+    mutate(in_gdc_protected = n - unrecoverable_n)
+type_filter_tbl
+```
+
+```{r}
+type_filter_tbl %>% 
+    filter(mc3_variant_type == 'SNP')
 ```
 
