@@ -1,0 +1,93 @@
+---
+title: "GDC unique calls in overlap"
+output: html_notebook
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(DBI)
+library(RSQLite)
+```
+
+Connect to the SQLite database.
+```{r, results='hide'}
+conn = dbConnect(RSQLite::SQLite(), dbname='../processed_data/all_variants.somatic_only.sqlite')
+dbExecute(conn, 'PRAGMA cache_size=-4192000')
+dbExecute(conn, 'PRAGMA temp_store=MEMORY')
+overlap_tbl <- as.tibble(dbReadTable(conn, 'full_overlap'))
+dbDisconnect(conn)
+```
+
+Select the variant calls unique in GDC or MC3.
+```{r}
+gdc_unique_tbl <- overlap_tbl %>% filter(only_in_gdc == 1)
+mc3_unique_tbl <- overlap_tbl %>% filter(only_in_mc3 == 1)
+```
+
+
+## GDC unique calls
+
+Reannotate the callers into individual columns.
+```{r}
+gdc_unique_tbl <- gdc_unique_tbl %>%
+    mutate(
+        gdc_by_muse = as.integer(str_detect(gdc_callers, 'muse')),
+        gdc_by_mutect = as.integer(str_detect(gdc_callers, 'mutect')),
+        gdc_by_somaticsniper = as.integer(str_detect(gdc_callers, 'somaticsniper')),
+        gdc_by_varscan = as.integer(str_detect(gdc_callers, 'varscan'))
+    )
+```
+
+
+Break down the number of variant calls by caller.
+```{r}
+gdc_unique_tbl %>% 
+    group_by(gdc_by_muse, gdc_by_mutect, gdc_by_somaticsniper, gdc_by_varscan, gdc_variant_type) %>% 
+    summarize(n = n()) %>% arrange(-n) %>% head(10)
+```
+
+All the calls made by one caller:
+```{r}
+gdc_unique_tbl %>% 
+    mutate(
+        gdc_ncallers = gdc_by_muse + gdc_by_mutect + gdc_by_somaticsniper + gdc_by_varscan
+    ) %>%
+    filter(gdc_ncallers == 1) %>%
+    group_by(gdc_callers) %>%
+    summarize(n = n()) %>% arrange(-n)
+```
+
+MuTect alone reports 46,426 SNPs, 11,308 INSs, and 7,741 DELs. Varscan reports 3,202 SNPS, 1,533 INDs, and 6,740 DELs.
+
+
+```{r}
+gdc_unique_tbl %>%
+    filter(gdc_callers == 'mutect') %>%
+    group_by(cancer_type, tumor_sample_barcode) %>%
+    summarize(n = n()) %>% arrange(-n)
+```
+
+39,910 of the MuTect calls are from wga samples:
+```{r}
+gdc_unique_tbl %>%
+    filter(gdc_callers == 'mutect' & str_detect(gdc_gdc_filter, 'wga_')) %>%
+    group_by(gdc_variant_type) %>%
+    summarize(n = n()) %>% arrange(-n)
+```
+
+
+```{r}
+gdc_unique_tbl %>%
+    filter(gdc_callers == 'varscan') %>%
+    group_by(cancer_type, tumor_sample_barcode) %>%
+    summarize(n = n()) %>% arrange(-n)
+```
+
+```{r}
+gdc_unique_tbl %>%
+    group_by(gdc_gdc_filter) %>%
+    summarize(n = n()) %>% arrange(-n)
+```
+
