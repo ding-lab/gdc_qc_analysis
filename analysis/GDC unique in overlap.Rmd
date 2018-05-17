@@ -13,7 +13,7 @@ library(RSQLite)
 
 Connect to the SQLite database.
 ```{r, results='hide'}
-conn = dbConnect(RSQLite::SQLite(), dbname='../processed_data/all_variants.somatic_only.sqlite')
+conn = dbConnect(RSQLite::SQLite(), dbname='../processed_data/all_variants.sqlite')
 dbExecute(conn, 'PRAGMA cache_size=-4192000')
 dbExecute(conn, 'PRAGMA temp_store=MEMORY')
 overlap_tbl <- as.tibble(dbReadTable(conn, 'full_overlap'))
