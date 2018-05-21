@@ -14,13 +14,13 @@ library(RSQLite)
 
 Connect to the SQLite database.
 ```{r}
-conn = dbConnect(RSQLite::SQLite(), dbname='../processed_data/all_variants.sqlite')
+conn = dbConnect(RSQLite::SQLite(), dbname='../processed_data/all_variants.somatic_only.sqlite')
 dbListTables(conn)
 ```
 
 Tweak SQLite caching strategy to use more memory (about 4GB).
 ```{r, results='hide'}
-dbExecute(conn, 'PRAGMA cache_size=-4192000')
+dbExecute(conn, 'PRAGMA cache_size=-4000000')
 dbExecute(conn, 'PRAGMA temp_store=MEMORY')
 ```
 
@@ -69,6 +69,70 @@ ggplot(per_sample_overlap, aes(x=gdc_shared_percent, y=mc3_shared_percent, size=
 ggsave('~/Box Sync/Ding_Lab/Projects_Current/GDC-QC/Figures/GDC_MC3_overlap_per_sample.exact_match.pdf', width = 9, height = 8.5)
 ```
 
+```{r}
+per_sample_overlap %>% ungroup() %>% summarize(
+    mc3 = 1 - sum(n_mc3_unique) / (sum(n_mc3_unique) + sum(n_shared)),
+    gdc = 1 - sum(n_gdc_unique) / (sum(n_gdc_unique) + sum(n_shared))
+)
+```
+
+```{r}
+plot_tbl <- per_sample_overlap %>% 
+    select(tumor_sample_barcode, MC3=mc3_shared_percent, GDC=gdc_shared_percent) %>%
+    gather('group', 'percentage', -tumor_sample_barcode)
+
+mc3_median <- median(per_sample_overlap$mc3_shared_percent)
+gdc_median <- median(per_sample_overlap$gdc_shared_percent)
+cat('MC3 median:', mc3_median, '\n')
+cat('GDC median:', gdc_median, '\n')
+
+ggplot(plot_tbl , aes(x=percentage, fill=group)) +
+    geom_histogram(binwidth = .025) + 
+    scale_fill_manual(values=c("#cb203a", "#044f83"), guide = FALSE) + 
+    scale_x_continuous(labels = scales::percent) + 
+    facet_grid(group ~ ., scales = "free_y") + 
+    theme_bw() + 
+    labs(y = 'Number of samples', x = 'Shared called ratio (%)')
+```
+
+```{r, results='hide'}
+ggsave('~/Box Sync/Ding_Lab/Projects_Current/GDC-QC/Figures/GDC_MC3_shared_call_histogram.pdf', width = 9, height = 5)
+ggsave('~/Box Sync/Ding_Lab/Projects_Current/GDC-QC/Figures/GDC_MC3_shared_call_histogram.png', width = 9, height = 5, dpi=144)
+```
+
+
+```{r}
+plot_tbl <- overlap_tbl %>% 
+    mutate(
+        gdc_vaf =
+            plyr::laply(str_split(gdc_t_alt_count_per_caller, ','), function(x) as.integer(x)[[1]]) / 
+                plyr::laply(str_split(gdc_t_depth_per_caller, ','), function(x) as.integer(x)[[1]]),
+        mc3_vaf = as.integer(mc3_t_alt_count) / as.integer(mc3_t_depth),
+        mutect_unique = factor(
+            only_in_gdc == 1 & gdc_callers == 'mutect' & gdc_filter == 'PASS' & gdc_gdc_filter == '',
+            levels = c(TRUE, FALSE)
+        )
+    ) %>%
+    select(mc3_vaf, gdc_vaf, mutect_unique) %>%
+    gather('Group', 'VAF', -mutect_unique) %>%
+    remove_missing(na.rm = TRUE)
+```
+
+```{r}
+ggplot(plot_tbl, aes(x=VAF, fill=Group)) +
+    geom_histogram(binwidth = 0.01) + 
+    scale_fill_manual(values=c("#cb203a", "#044f83"), guide = FALSE) + 
+    facet_grid(mutect_unique ~ ., scales = 'free_y', 
+               labeller = labeller(mutect_unique=c(`TRUE`='MuTect good unique in GDC', `FALSE`='Others'))) + 
+    theme_bw() + 
+    labs(y = NULL, x = 'Variant allele frequency (VAF)')
+
+ggsave('~/Box Sync/Ding_Lab/Projects_Current/GDC-QC/Figures/mutect_unique_call_vaf.pdf', width = 9, height = 5)
+ggsave('~/Box Sync/Ding_Lab/Projects_Current/GDC-QC/Figures/mutect_unique_call_vaf.png', width = 9, height = 5, dpi=144)
+```
+
+
+
 ### Outliers 
 
 Find the outlier samples in the scatter plot.
@@ -96,6 +160,95 @@ per_sample_overlap %>%
     filter(cancer_type == 'OV' & gdc_shared_percent > 0.48 & mc3_shared_percent < 0.10)
 ```
 
+
+## COAD samples
+
+```{r}
+coad_tbl <- per_sample_overlap %>% 
+    filter(cancer_type == 'COAD')
+
+plot_tbl <- coad_tbl %>% 
+    select(tumor_sample_barcode, MC3=mc3_shared_percent, GDC=gdc_shared_percent) %>%
+    gather('group', 'percentage', -tumor_sample_barcode)
+ggplot(plot_tbl , aes(x=percentage, fill=group)) +
+    geom_histogram(binwidth = .025) + 
+    scale_fill_manual(values=c("#cb203a", "#044f83"), guide = FALSE) + 
+    scale_x_continuous(labels = scales::percent) + 
+    facet_grid(group ~ ., scales = "free_y") + 
+    labs(y="Number of samples") + 
+    theme_bw()
+```
+
+```{r}
+nrow(coad_tbl)
+coad_tbl %>%
+    filter(mc3_shared_percent >= mc3_median & gdc_shared_percent >= gdc_median) %>% 
+    nrow
+```
+
+
+
+### COAD top left
+```{r}
+samples <- per_sample_overlap %>% filter(cancer_type == 'COAD' & mc3_shared_percent > 0.8 & gdc_shared_percent < 0.15)
+samples
+variants_tbl <- overlap_tbl %>% filter(tumor_sample_barcode %in% samples$tumor_sample_barcode)
+variants_tbl %>% 
+    filter(only_in_gdc > 0) %>%
+    group_by(gdc_gdc_filter, gdc_callers) %>%
+    summarise(n = n()) %>%
+    arrange(-n)
+
+mutect_only_tbl <- variants_tbl %>% 
+    filter(only_in_gdc > 0 & gdc_callers == 'mutect' & gdc_filter == 'PASS' & gdc_gdc_filter == '') %>%
+    mutate(gdc_t_alt_count_per_caller = as.integer(gdc_t_alt_count_per_caller))
+    
+
+mutect_only_tbl %>%
+    group_by(gdc_variant_type) %>%
+    summarise(n = n()) %>%
+    arrange(-n)
+
+ggplot(
+    data = mutect_only_tbl %>% filter(gdc_variant_type %in% c("INS", "DEL")),
+    aes(x=gdc_t_alt_count_per_caller)
+) + 
+    geom_histogram() + 
+    theme_bw() + 
+    labs(x='GDC tumor alternative allele read count', y = 'Number of variants')
+
+ggsave('~/Box Sync/Ding_Lab/Projects_Current/GDC-QC/Figures/MuTect_good_unique_in_GDC.t_alt_count.png', width = 9, height = 5)
+```
+
+
+
+## LAML samples
+```{r}
+laml_tbl <- per_sample_overlap %>% 
+    filter(cancer_type == 'LAML')
+
+nrow(laml_tbl)
+laml_tbl %>%
+    filter(mc3_shared_percent >= mc3_median & gdc_shared_percent >= gdc_median) %>% 
+    nrow
+
+plot_tbl <- laml_tbl %>% 
+    select(tumor_sample_barcode, MC3=mc3_shared_percent, GDC=gdc_shared_percent) %>%
+    gather('group', 'percentage', -tumor_sample_barcode)
+ggplot(plot_tbl , aes(x=percentage, fill=group)) +
+    geom_histogram(binwidth = .025) + 
+    scale_fill_manual(values=c("#cb203a", "#044f83"), guide = FALSE) + 
+    scale_x_continuous(labels = scales::percent) + 
+    facet_grid(group ~ ., scales = "free_y") + 
+    labs(y="Number of samples") + 
+    theme_bw()
+
+ggsave('~/Box Sync/Ding_Lab/Projects_Current/GDC-QC/Figures/GDC_MC3_shared_call_histogram.LAML.pdf', width = 9, height = 5)
+ggsave('~/Box Sync/Ding_Lab/Projects_Current/GDC-QC/Figures/GDC_MC3_shared_call_histogram.LAML.png', width = 9, height = 5, dpi=144)
+```
+
+
+## BRCA
 
 ### BRCA top left samples
 ```{r}
@@ -126,22 +279,45 @@ mutect_only_tbl %>%
 Most GDC unique calls are by MuTect and many of the unique calls are INDELs.
 
 
-#### COAD top left
 ```{r}
-samples <- per_sample_overlap %>% filter(cancer_type == 'COAD' & mc3_shared_percent > 0.8 & gdc_shared_percent < 0.15)
+### BRCA bottom right samples
+samples <- per_sample_overlap %>% filter(cancer_type == 'BRCA' & mc3_shared_percent < 0.125 & gdc_shared_percent > 0.6)
 print(samples)
-variants_tbl <- overlap_tbl %>% filter(tumor_sample_barcode %in% samples$tumor_sample_barcode)
-variants_tbl %>% 
-    filter(only_in_gdc > 0) %>%
-    group_by(gdc_gdc_filter, gdc_callers) %>%
-    summarise(n = n()) %>%
-    arrange(-n)
+
+variants_tbl <- overlap_tbl %>% 
+    filter(tumor_sample_barcode %in% samples$tumor_sample_barcode)
+
+variants_tbl %>%
+    filter(only_in_mc3 > 0) %>%
+    group_by(mc3_callers, mc3_variant_type) %>%
+    summarize(n = n()) %>% arrange(-n)
 ```
 
-Most GDC unique calls are by MuTect. One sample is labeled as wga_pair, but still the other sample contributes many MuTect uniuqe calls in GDC.
+
+## OV
+
+```{r}
+ov_tbl <- overlap_tbl %>%
+    filter(cancer_type == 'OV')
+
+samples <- ov_tbl %>% group_by(tumor_sample_barcode) %>%
+    summarize(use_wga = any(str_detect(mc3_filter, 'wga'), na.rm=TRUE) | any(str_detect(gdc_filter, 'wga'), na.rm=TRUE))
+
+samples %>%
+    group_by(use_wga) %>%
+    summarize(n = n())
+
+ov_tbl %>% filter(only_in_gdc == 1) %>%
+    group_by(gdc_callers, gdc_filter) %>%
+    summarize(n = n()) %>% arrange(-n)
+
+ov_tbl %>% filter(only_in_gdc == 1 & tumor_sample_barcode %in% (samples %>% filter(use_wga == FALSE))$tumor_sample_barcode) %>%
+    group_by(gdc_callers, gdc_filter) %>%
+    summarize(n = n()) %>% arrange(-n)
+```
 
 
-#### OV bottom middle
+### OV bottom middle
 ```{r}
 samples <- per_sample_overlap %>% filter(cancer_type == 'OV' & mc3_shared_percent < .1)
 print(samples)
@@ -157,6 +333,11 @@ variants_tbl %>%
 variants_tbl %>%
     filter(only_in_mc3 > 0) %>%
     group_by(tumor_sample_barcode, mc3_callers, mc3_filter) %>%
+    summarize(n = n()) %>% arrange(-n)
+
+variants_tbl %>%
+    filter(only_in_mc3 > 0) %>%
+    group_by(mc3_callers, mc3_variant_type, mc3_filter) %>%
     summarize(n = n()) %>% arrange(-n)
 ```
 
@@ -174,6 +355,8 @@ gdc_unique_dup_tbl <- gdc_unique_calls_tbl %>%
         gdc_tumor_seq_allele1, tumor_seq_allele2, 
         .keep_all = TRUE
     ) %>%
+    select(tumor_sample_barcode, chromosome, start_position, end_position, reference_allele, gdc_tumor_seq_allele1, tumor_seq_allele2, 
+           gdc_callers, gdc_filter, gdc_gdc_filter, gdc_t_depth_per_caller, gdc_t_alt_count_per_caller) %>%
     group_by(chromosome, start_position, end_position, tumor_sample_barcode) %>%
     filter(n() > 1)
 
@@ -181,4 +364,5 @@ nrow(gdc_unique_dup_tbl)
 
 head(gdc_unique_dup_tbl, 20)
 ```
+Most GDC unique calls are by MuTect. One sample is labeled as wga_pair, but still the other sample contributes many MuTect uniuqe calls in GDC.
 
