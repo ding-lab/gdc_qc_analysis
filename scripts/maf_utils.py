@@ -39,11 +39,11 @@ class MAF:
         """
         line_no, line = next(self._reader)
         while line.startswith('#'):
-            self.header_comments.append(line.rstrip())
+            self.header_comments.append(line.rstrip('\n'))
             line_no, line = next(self._reader)
 
         # Treat the first noncomment line as columns
-        return line.rstrip().split('\t')
+        return line.rstrip('\n').split('\t')
 
     def make_columns(self, raw_columns):
         """Define the columns a variant record should store."""
@@ -62,7 +62,7 @@ class MAF:
 
     def __next__(self):
         line_no, line = next(self._reader)
-        cols = line.rstrip().split('\t')
+        cols = line.rstrip('\n').split('\t')
         return self.make_record(cols)
 
 
@@ -87,7 +87,7 @@ class MC3MAF(MAF):
 
     def __next__(self):
         line_no, line = next(self._reader)
-        cols = line.rstrip().split('\t')
+        cols = line.rstrip('\n').split('\t')
         r = self._record_cls(*cols, line_no)
         # Rename chromosome
         r = r._replace(chromosome=f'chr{r.chromosome}')
@@ -115,5 +115,5 @@ class GDCMAF(MAF):
 
     def __next__(self):
         line_no, line = next(self._reader)
-        cols = line.rstrip().split('\t')
+        cols = line.rstrip('\n').split('\t')
         return self._record_cls(*cols, self.cancer_type, self.caller, line_no)
