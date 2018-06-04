@@ -33,6 +33,7 @@ SELECT
     m.tumor_seq_allele1 AS mc3_tumor_seq_allele1,
     m.t_depth AS mc3_t_depth, m.t_ref_count AS mc3_t_ref_count, m.t_alt_count AS mc3_t_alt_count,
     m.n_depth AS mc3_n_depth, m.n_ref_count AS mc3_n_ref_count, m.n_alt_count AS mc3_n_alt_count,
+    m.filter AS mc3_filter,
     m.centers AS mc3_callers, m.ncallers AS mc3_ncallers,
     (CASE WHEN m.existing_variation='.' THEN NULL ELSE m.existing_variation END) AS mc3_existing_variation,
     m.rowid AS mc3_protected_rowid
@@ -42,7 +43,7 @@ INNER JOIN mc3_protected m
 ;
 
 CREATE TABLE IF NOT EXISTS mc3_recoverable_unique AS
-SELECT 
+SELECT
     mu.*,
     g.tumor_seq_allele1 AS gdc_tumor_seq_allele1,
     g.t_depth_per_caller AS gdc_t_depth_per_caller,
