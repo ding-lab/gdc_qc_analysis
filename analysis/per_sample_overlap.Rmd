@@ -344,25 +344,44 @@ variants_tbl %>%
 Most unique MC3 calls are from RADIA + VarscanS with oxog filter and INDELOCATOR* + PINDEL with wga filter.
 
 
-### Group GDC unique calls
+## Duplicated GDC calls 
 ```{r}
-gdc_unique_calls_tbl <- overlap_tbl %>% 
-    filter(only_in_gdc > 0) 
-
-gdc_unique_dup_tbl <- gdc_unique_calls_tbl %>%
+gdc_dup_calls_tbl <- overlap_tbl %>% 
+    filter(only_in_gdc > 0 | shared_by_gdc_mc3 > 0) %>%
     distinct(
         tumor_sample_barcode, chromosome, start_position, end_position, 
         gdc_tumor_seq_allele1, tumor_seq_allele2, 
         .keep_all = TRUE
     ) %>%
-    select(tumor_sample_barcode, chromosome, start_position, end_position, reference_allele, gdc_tumor_seq_allele1, tumor_seq_allele2, 
-           gdc_callers, gdc_filter, gdc_gdc_filter, gdc_t_depth_per_caller, gdc_t_alt_count_per_caller) %>%
+    filter(
+        # MC3 and GDC overlap here needs to be exactly the same (matching tumor allele 1)
+        only_in_gdc > 0 | mc3_tumor_seq_allele1 == gdc_tumor_seq_allele1
+    ) %>%
+    select(
+        tumor_sample_barcode, chromosome, start_position, end_position, reference_allele, 
+        mc3_tumor_seq_allele1, gdc_tumor_seq_allele1, tumor_seq_allele2,
+        mc3_callers, mc3_filter, mc3_t_depth, mc3_t_alt_count,
+        gdc_callers, gdc_filter, gdc_gdc_filter, gdc_t_depth_per_caller, gdc_t_alt_count_per_caller,
+        gdc_rowid, mc3_rowid, only_in_gdc, shared_by_gdc_mc3
+    ) %>%
     group_by(chromosome, start_position, end_position, tumor_sample_barcode) %>%
-    filter(n() > 1)
-
-nrow(gdc_unique_dup_tbl)
-
-head(gdc_unique_dup_tbl, 20)
+    filter(n() > 1) %>%
+    ungroup()
 ```
 Most GDC unique calls are by MuTect. One sample is labeled as wga_pair, but still the other sample contributes many MuTect uniuqe calls in GDC.
+
+```{r}
+gdc_dup_calls_tbl %>% 
+    summarize(sum(only_in_gdc), sum(shared_by_gdc_mc3))
+```
+
+
+Select a few examples for manual review
+```{r}
+gdc_dup_calls_tbl %>%
+    filter(
+        tumor_sample_barcode == 'TCGA-AA-A010-01A-01D-A17O-10' &
+        chromosome %in% c('chr9', 'chr19')
+    )
+```
 
