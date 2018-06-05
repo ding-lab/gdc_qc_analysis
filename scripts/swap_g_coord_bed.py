@@ -7,6 +7,22 @@ from maf_utils import MC3MAF
 logger = logging.getLogger(__name__)
 
 
+class MC3MAFClean(MC3MAF):
+
+    def make_columns(self, raw_columns):
+        # The last column is raw_file_line_number
+        cols = super().make_columns(raw_columns)
+        return cols[:-1]
+
+    def __next__(self):
+        line_no, line = next(self._reader)
+        cols = line.rstrip('\n').split('\t')
+        r = self._record_cls(*cols)
+        # Rename chromosome
+        r = r._replace(chromosome=f'chr{r.chromosome}')
+        return r
+
+
 def read_g_coord_conversion(pth):
     FAILED_CONVERSION = "-1", -1, -1, "-1", -1, -1
     with gzip.open(pth, 'rt') as f:
@@ -34,10 +50,10 @@ def read_g_coord_conversion(pth):
 
 
 def main(args):
-    maf_reader = MC3MAF(Path(args.maf_pth))
+    maf_reader = MC3MAFClean(Path(args.maf_pth))
     g_coord_reader = read_g_coord_conversion(args.new_coord_gz_pth)
     # Write the original MAF header
-    print('\t'.join(maf_reader.raw_columns[:-1]))
+    print('\t'.join(maf_reader.raw_columns))
 
     for i, (record, converted_g_coord) in enumerate(zip(maf_reader, g_coord_reader), 1):
         if i % 500000 == 0:
