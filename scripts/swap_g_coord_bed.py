@@ -8,18 +8,18 @@ def read_g_coord_conversion(pth):
     FAILED_CONVERSION = "-1", -1, -1
     with gzip.open(pth, 'rt') as f:
         for line in f:
-            if 'split' in line:
+            if '(split' in line:
                 # Read until we skip all the split'd records
-                while 'split' in line:
+                while '(split' in line:
                     line = next(f)
                 yield FAILED_CONVERSION
                 # The while loop will break at the new record so we don't continue here
             if 'Fail' in line:
                 yield FAILED_CONVERSION
                 continue
-            *_, new_chrom, new_start, new_end = line[:-1].split('\t')
+            old_chrom, old_start, old_end, _, new_chrom, new_start, new_end = line[:-1].split('\t')
             # Convert back to 1-based coord
-            yield new_chrom, int(new_start) + 1, int(new_end)
+            yield old_chrom, int(old_start) + 1, int(old_end), new_chrom, int(new_start) + 1, int(new_end)
 
 
 def main(args):
@@ -31,7 +31,14 @@ def main(args):
         f.write(gzip.open(args.maf_pth, 'rt').readline())
 
         for record, converted_g_coord in zip(maf_reader, g_coord_reader):
-            new_chrom, new_start, new_end = converted_g_coord
+            old_chrom, old_start, old_end, new_chrom, new_start, new_end = converted_g_coord
+            if old_start != record.start_position or old_end != record.end_position:
+                logger.error(
+                    f'Coordinate mismatch! Expected {converted_g_coord} '
+                    f'but current record should be {record.old_chrom}:'
+                    f'{record.start_position}-{record.end_position}'
+                )
+                raise ValueError(f'Record misaligned at {record}.)
             if new_chrom == '-1':
                 # The conversion failed. And we SKIP THIS RECORD
                 continue
