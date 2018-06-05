@@ -38,7 +38,7 @@ def main(args):
                     f'but current record should be {record.old_chrom}:'
                     f'{record.start_position}-{record.end_position}'
                 )
-                raise ValueError(f'Record misaligned at {record}.)
+                raise ValueError('Record misaligned')
             if new_chrom == '-1':
                 # The conversion failed. And we SKIP THIS RECORD
                 continue
