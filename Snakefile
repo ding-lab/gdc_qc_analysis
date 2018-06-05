@@ -22,6 +22,7 @@ GDC_MAFS = find_all_gdc_mafs(Path(config['GDC_DATA_ROOT']))
 GDC_PROTECTED_MAFS = find_all_gdc_mafs(
     Path(config['GDC_DATA_ROOT']), 'protected')
 
+
 def find_mc3_maf(wildcards):
     """Return different MC3 MAFS
 
@@ -59,7 +60,7 @@ rule swap_maf_g_coords:
         g_coords='processed_data/mc3.{access_type}.GRCh38.g_coords.gz'
     output: 'processed_data/mc3.{access_type}.converted.GRCh38.maf.gz'
     shell:
-        'python scripts/swap_g_coord_bed.py {input.maf} {input.g_coords} {output}'
+        'python scripts/swap_g_coord_bed.py {input.maf} {input.g_coords} | gzip -c > {output}'
 
 
 rule make_db:
@@ -77,11 +78,12 @@ rule make_db:
         shell("python scripts/create_overlap_table.py --db-pth {output}")
         shell('sqlite3 -echo {output} < scripts/clean_up.sql')
 
+
 rule add_protected_mafs_to_db:
     """Add protected MAFs into SQLite database."""
     input:
         mc3_maf='processed_data/mc3.controlled.converted.GRCh38.maf.gz',
-        gdc_mafs=GDC_MAFS
+        gdc_mafs=GDC_MAFS,
         db=rules.make_db.output[0]
     output:
         'processed_data/db_state/has_added_protected_mafs'
@@ -89,7 +91,10 @@ rule add_protected_mafs_to_db:
         gdc_root=config['GDC_DATA_ROOT']
     run:
         shell("python scripts/add_protected_maf.py --db-url 'sqlite:///{input.db}' --mc3-maf {input.mc3_maf} --gdc-root {params.gdc_root}")
+        shell("sqlite3 -echo {input.db} < scripts/group_protected_gdc_callers_loose.sql")
+        shell("sqlite3 -echo {input.db} < scripts/create_recoverable_unique_tables.sql")
         shell("touch {output}")
+
 
 rule all:
     input:
