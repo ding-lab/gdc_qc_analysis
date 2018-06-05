@@ -27,10 +27,10 @@ class MAF:
 
         # Header comments appear before column
         self.header_comments = []
-        raw_columns = self.read_header()
+        self.raw_columns = self.read_header()
 
         # Set up columns
-        self.columns = self.make_columns(raw_columns)
+        self.columns = self.make_columns(self.raw_columns)
         self._record_cls = self.make_record_class()
 
     def read_header(self):
