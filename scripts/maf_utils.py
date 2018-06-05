@@ -19,7 +19,7 @@ class MAF:
         if pth.suffix == '.gz':
             self._file = gzip.open(str(pth), 'rt')
         else:
-            self._file = open(pth)
+            self._file = open(str(pth))
 
         # A reader wrapping the underlying file object
         # which also returns the line number
