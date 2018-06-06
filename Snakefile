@@ -15,7 +15,7 @@ def find_all_gdc_mafs(gdc_root: Path, file_type='somatic'):
                 maf = next(gdc_root.glob(f'*/TCGA.{cancer}.{caller}.*.{file_type}.maf.gz'))
             except StopIteration:
                 raise ValueError(f'Cannot find GDC MAF for {cancer} by {caller}')
-            gdc_mafs.append(maf)
+            gdc_mafs.append(str(maf))
     return gdc_mafs
 
 GDC_MAFS = find_all_gdc_mafs(Path(config['GDC_DATA_ROOT']))
@@ -97,8 +97,8 @@ rule add_protected_mafs_to_db:
 
 
 rule extract_filter:
-    input: 'processed_data/{grp}_recoverable_unique_variants.tsv'
-    output: 'processed_data/{grp}_recoverable_unique_variants.filter_indicators.tsv'
+    input: 'processed_data/{grp}_recoverable_unique_variants.tsv.gz'
+    output: 'processed_data/{grp}_recoverable_unique_variants.filter_cols.tsv.gz'
     shell:
         'python scripts/extract_filters.py {input} {output}'
 
@@ -107,4 +107,4 @@ rule all:
     input:
         'processed_data/mc3.public.converted.GRCh38.maf.gz',
         # 'processed_data/mc3.controlled.converted.GRCh38.maf.gz',
-        expand('processed_data/{grp}_recoverable_unique_variants.filter_indicators.tsv', grp=['gdc', 'mc3']),
+        expand('processed_data/{grp}_recoverable_unique_variants.filter_cols.tsv.gz', grp=['gdc', 'mc3']),

@@ -5,7 +5,6 @@ from itertools import chain
 import logging
 
 import pandas as pd
-import numpy as np
 
 
 logger = logging.getLogger(__name__)
@@ -87,7 +86,7 @@ def main(tsv_pth, out_pth):
     mc3_filter_df = gen_filter_indicator_df(df, 'mc3_filter', 'mc3', sep=',')
     all_filter_df = pd.concat([gdc_filter_df, gdc_gdc_filter_df, mc3_filter_df], axis='columns')
 
-    all_filter_df.to_csv(out_pth, sep='\t', index=False)
+    all_filter_df.to_csv(out_pth, sep='\t', index=False, compression='gzip')
 
 
 if __name__ == '__main__':
