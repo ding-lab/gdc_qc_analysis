@@ -96,7 +96,15 @@ rule add_protected_mafs_to_db:
         shell("touch {output}")
 
 
+rule extract_filter:
+    input: 'processed_data/{grp}_recoverable_unique_variants.tsv'
+    output: 'processed_data/{grp}_recoverable_unique_variants.filter_indicators.tsv'
+    shell:
+        'python scripts/extract_filters.py {input} {output}'
+
+
 rule all:
     input:
         'processed_data/mc3.public.converted.GRCh38.maf.gz',
-        # 'processed_data/mc3.controlled.converted.GRCh38.maf.gz'
+        # 'processed_data/mc3.controlled.converted.GRCh38.maf.gz',
+        expand('processed_data/{grp}_recoverable_unique_variants.filter_indicators.tsv', grp=['gdc', 'mc3']),
