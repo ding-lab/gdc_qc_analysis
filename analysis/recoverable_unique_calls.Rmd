@@ -1,0 +1,154 @@
+---
+title: "Recoverable unique calls"
+author: "Liang-Bo Wang"
+date: '2018-06-04'
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(DBI)
+library(RSQLite)
+```
+
+Connect to the SQLite database. Tweak SQLite caching strategy to use more memory (about 4GB).
+```{r, results='hide'}
+conn = dbConnect(RSQLite::SQLite(), dbname='../processed_data/all_variants.somatic_only.sqlite')
+dbExecute(conn, 'PRAGMA cache_size=-4000000')
+dbExecute(conn, 'PRAGMA temp_store=MEMORY')
+```
+
+Read full overlap table into memory.
+```{r}
+overlap_tbl <- as.tibble(dbReadTable(conn, 'full_overlap'))
+```
+
+Read recoverable unique calls.
+```{r, results='hide'}
+gdc_recoverable_unique_tbl <- read_tsv(
+    '../processed_data/gdc_recoverable_unique_variants.tsv.gz',
+    col_types = cols(
+        .default = col_character(),
+        start_position = col_integer(), end_position = col_integer(),
+        mc3_t_depth = col_integer(), mc3_t_ref_count = col_integer(), mc3_t_alt_count = col_integer(),
+        mc3_n_depth = col_integer(), mc3_n_ref_count = col_integer(), mc3_n_alt_count = col_integer(),
+        overlap_rowid = col_integer(), gdc_rowid = col_integer(), mc3_protected_rowid = col_integer()
+    )
+)
+gdc_filters_tbl <- read_tsv('../processed_data/gdc_recoverable_unique_variants.filter_cols.tsv.gz') 
+mc3_recoverable_unique_tbl <- read_tsv(
+    '../processed_data/mc3_recoverable_unique_variants.tsv.gz',
+        col_types = cols(
+        .default = col_character(),
+        start_position = col_integer(), end_position = col_integer(),
+        mc3_t_depth = col_integer(), mc3_t_ref_count = col_integer(), mc3_t_alt_count = col_integer(),
+        mc3_n_depth = col_integer(), mc3_n_ref_count = col_integer(), mc3_n_alt_count = col_integer(),
+        overlap_rowid = col_integer(), mc3_rowid = col_integer(), gdc_protected_rowid = col_integer()
+    )
+)
+mc3_filters_tbl <- read_tsv('../processed_data/mc3_recoverable_unique_variants.filter_cols.tsv.gz')
+
+# Merge with its filter columns
+gdc_tbl <- bind_cols(gdc_recoverable_unique_tbl, gdc_filters_tbl)
+mc3_tbl <- bind_cols(mc3_recoverable_unique_tbl, mc3_filters_tbl)
+```
+
+
+## Filter analysis
+
+A quick overview of the filter flags.
+```{r}
+gdc_tbl %>%
+    group_by(gdc_filter, gdc_gdc_filter, mc3_filter) %>%
+    summarize(n = n()) %>% arrange(-n) %>%
+    filter(n >= 100)
+```
+
+```{r}
+mc3_tbl %>%
+    group_by(gdc_filter, gdc_gdc_filter, mc3_filter) %>%
+    summarize(n = n()) %>% arrange(-n) %>%
+    filter(n >= 100)
+```
+
+```{r}
+top_gdc_filters <- gdc_tbl %>%
+    select(starts_with('gdc__'), starts_with('gdc_gdc__')) %>%
+    summarise_all(sum) %>% 
+    gather(key = "filter", value = "count") %>%
+    arrange(-count) %>%
+    filter(count >= 50)
+
+top_mc3_filters <- gdc_tbl %>%
+    select(starts_with('mc3__')) %>%
+    summarise_all(sum) %>% 
+    gather(key = "filter", value = "count") %>%
+    arrange(-count) %>%
+    filter(count >= 50)
+    
+top_gdc_filters
+top_mc3_filters
+```
+
+```{r}
+gdc_tbl %>%
+    group_by(!!! rlang::syms(top_gdc_filters$filter)) %>%
+    count(sort = TRUE)
+```
+
+```{r}
+mc3_tbl %>%
+    select(starts_with('mc3__'), starts_with('gdc__'), starts_with('gdc_gdc__')) %>%
+    summarise_all(sum) %>% 
+    gather(key = "filter", value = "count") %>%
+    arrange(-count)
+```
+
+
+## Good GDC recoverable unique
+
+```{r}
+gdc_recover_pass <- gdc_recoverable_unique_tbl %>%
+    filter(mc3_filter == 'PASS' & gdc_filter == 'PASS' & is.na(gdc_gdc_filter)) %>%
+    select(gdc_tumor_seq_allele1, mc3_tumor_seq_allele1, tumor_seq_allele2, gdc_reference_allele, mc3_reference_allele, everything())
+
+nrow(gdc_recover_pass)
+```
+
+```{r}
+gdc_recover_pass %>% count(mc3_callers) %>% arrange(-n)
+
+gdc_recover_pass %>% count(cancer_type) %>% arrange(-n)
+
+gdc_recover_pass %>% count(gdc_variant_classification) %>% arrange(-n)
+```
+
+13,296 GDC recoverable unique calls without any filter were only called by one caller in MC3.
+
+```{r}
+ggplot(data = gdc_recover_pass %>% mutate(mc3_vaf = mc3_t_alt_count / mc3_t_depth)) +
+    geom_point(aes(x=mc3_t_depth, y=mc3_t_alt_count))
+```
+
+```{r}
+ggplot(data = gdc_recover_pass %>% mutate(mc3_vaf = mc3_t_alt_count / mc3_t_depth)) +
+    geom_point(aes(x=mc3_n_depth, y=mc3_n_alt_count))
+```
+
+```{r}
+gdc_recover_pass %>%
+    filter(gdc_reference_allele == mc3_reference_allele) %>%
+    filter(gdc_tumor_seq_allele1 != mc3_tumor_seq_allele1) %>%
+    nrow
+```
+
+
+GDC recoverable without any filter unique calls.
+```{r}
+bad_gdc_recover <- gdc_recover_pass %>%
+    filter(gdc_reference_allele != mc3_reference_allele) %>%
+    arrange(tumor_sample_barcode, chromosome, start_position, end_position)
+
+bad_gdc_recover
+```
