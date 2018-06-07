@@ -55,7 +55,7 @@ mc3_tbl <- bind_cols(mc3_recoverable_unique_tbl, mc3_filters_tbl)
 ```
 
 
-## Filter analysis
+## GDC Filter analysis
 
 A quick overview of the filter flags.
 ```{r}
@@ -66,68 +66,198 @@ gdc_tbl %>%
 ```
 
 ```{r}
+gdc_filters <- gdc_tbl %>%
+    select(starts_with('gdc__'), starts_with('gdc_gdc__')) %>%
+    summarise_all(sum) %>% 
+    gather(key = "filter", value = "count") %>%
+    arrange(-count)
+
+mc3_filters <- gdc_tbl %>%
+    select(starts_with('mc3__')) %>%
+    summarise_all(sum) %>% 
+    gather(key = "filter", value = "count") %>%
+    arrange(-count)
+    
+gdc_filters
+mc3_filters
+```
+
+Interesting comparison filter pairs:
+- PASS:
+    - gdc__PASS gdc__PASS vs mc3__PASS
+- WGA: 
+    - gdc_gdc__wga_pair, gdc_gdc__wga_tumor, gdc_gdc__wga_normal vs mc3__wga
+- bitgt: Target .bed file (Broad); outside of the target design probes, implying non-common-capture regions.
+- PoN:
+    - gdc_gdc__gdc_pon, gdc__panel_of_normals vs mc3__broad_PoN_v2
+    - gdc__panel_of_normals will have gdc_gdc__gdc_pon but not otherwise
+- NonExonic:
+    - gdc_gdc__NonExonic vs mc3__NonExonic
+
+
+### GDC calls with MC3 PASS filter
+```{r}
+gdc_calls <- gdc_tbl %>% filter(mc3_filter == 'PASS')
+nrow(gdc_calls)
+```
+
+```{r}
+gdc_calls %>% count(mc3_callers, sort = TRUE)
+gdc_calls %>% count(gdc_filter, gdc_gdc_filter, sort = TRUE) %>% filter(n >= 10)
+```
+
+Exclude those calls from the rest of the analysis
+```{r}
+remaining_gdc_calls <- gdc_tbl %>% filter(mc3_filter != 'PASS')
+```
+
+
+### GDC calls with MC3 one-caller:
+```{r}
+remaining_gdc_calls %>% count(mc3_ncallers, sort = TRUE)
+```
+
+Exclude those calls from the rest of the analysis
+```{r}
+remaining_gdc_calls <- remaining_gdc_calls %>% filter(mc3_ncallers > 1)
+```
+
+
+
+### GDC calls with MC3 NonExonic filter: 
+```{r}
+gdc_calls <- remaining_gdc_calls %>% filter(mc3__NonExonic == 1)
+nrow(gdc_calls)
+```
+
+```{r}
+gdc_calls %>% count(gdc_filter, gdc_gdc_filter, sort = TRUE) %>% head(10)
+```
+
+
+```{r}
+gdc_calls %>% filter(gdc_gdc__wga_pair == 1 | gdc_gdc__wga_normal == 1 | gdc_gdc__wga_tumor == 1) %>% nrow
+gdc_calls %>% filter(gdc_gdc__NonExonic == 1) %>% nrow
+gdc_calls %>% filter(gdc_gdc__bitgt == 1) %>% nrow
+gdc_calls %>% filter(gdc_gdc__bitgt == 1 | gdc_gdc__NonExonic == 1) %>% nrow
+```
+
+```{r}
+gdc_calls %>% count(gdc_variant_classification, sort = TRUE)
+```
+
+```{r}
+gdc_calls %>% filter(gdc_variant_classification %in% c('Intron', 'RNA', "5'Flank", "3'Flank", "3'UTR", "5'UTR", "IGR")) %>% nrow
+gdc_calls %>% filter(gdc_variant_classification %in% c('Splice_Region', 'Splice_Site')) %>% nrow
+```
+
+```{r}
+gdc_calls %>% 
+    filter(gdc_variant_classification %in% c('Missense_Mutation', 'Nonsense_Mutation', 'Silent', 'Nonstop_Mutation')) %>%
+    nrow
+
+gdc_calls %>% 
+    filter(gdc_variant_classification %in% c('Missense_Mutation', 'Nonsense_Mutation', 'Silent', 'Nonstop_Mutation')) %>%
+    count(gdc_hugo_symbol, mc3_hugo_symbol, sort = TRUE) %>%
+    filter(n >= 10)
+```
+
+Exclude those calls from the rest of the analysis
+```{r}
+remaining_gdc_calls <- remaining_gdc_calls %>% filter(mc3__NonExonic == 0)
+```
+
+```{r}
+remaining_gdc_calls %>%
+    count(gdc_filter, gdc_gdc_filter, mc3_filter, sort = TRUE) %>% 
+    head(20)
+```
+
+
+### GDC calls with MC3 PoN filter:
+
+```{r}
+gdc_calls <- remaining_gdc_calls %>% filter(mc3__broad_PoN_v2 == 1)
+nrow(gdc_calls)
+```
+
+```{r}
+gdc_calls %>% count(gdc_filter, gdc_gdc_filter, mc3_filter, sort=TRUE) %>% head(20)
+```
+
+```{r}
+gdc_calls %>% filter(gdc__panel_of_normals == 1 | gdc_gdc__gdc_pon == 1) %>% nrow
+gdc_calls %>% filter(gdc_gdc__) %>% nrow
+gdc_calls %>% filter(gdc__panel_of_normals == 1 | gdc_gdc__gdc_pon == 1) %>% 
+    count(gdc_variant_classification, sort = TRUE)
+```
+
+
+Exclude those calls from the rest of the analysis
+```{r}
+remaining_gdc_calls <- remaining_gdc_calls %>% filter(mc3__broad_PoN_v2 == 0)
+```
+
+
+
+### GDC calls with MC3 Target seq BED region:
+
+```{r}
+gdc_calls <- remaining_gdc_calls %>% filter(mc3__bitgt == 1)
+gdc_calls %>% count(gdc_filter, gdc_gdc__bitgt, sort = TRUE)
+```
+
+```{r}
+gdc_calls %>% filter(gdc_filter == 'PASS' & gdc_gdc__bitgt == 0) %>%
+    count(gdc_gdc_filter, mc3_filter, sort = TRUE)
+```
+
+```{r}
+remaining_gdc_calls <- remaining_gdc_calls %>% filter(mc3__bitgt == 0)
+```
+
+
+```{r}
+remaining_gdc_calls %>%
+    count(gdc_filter, gdc_gdc_filter, mc3_filter, sort=TRUE)
+```
+
+
+
+
+
+## MC3 filter analysis
+```{r}
+gdc_filters <- mc3_tbl %>%
+    select(starts_with('gdc__'), starts_with('gdc_gdc__')) %>%
+    summarise_all(sum) %>% 
+    gather(key = "filter", value = "count") %>%
+    arrange(-count)
+
+mc3_filters <- mc3_tbl %>%
+    select(starts_with('mc3__')) %>%
+    summarise_all(sum) %>% 
+    gather(key = "filter", value = "count") %>%
+    arrange(-count)
+    
+gdc_filters
+mc3_filters
+```
+
+
+
+## MC3 recoverable unique filter analysis
+
+```{r}
 mc3_tbl %>%
     group_by(gdc_filter, gdc_gdc_filter, mc3_filter) %>%
     summarize(n = n()) %>% arrange(-n) %>%
     filter(n >= 100)
 ```
 
-```{r}
-top_gdc_filters <- gdc_tbl %>%
-    select(starts_with('gdc__'), starts_with('gdc_gdc__')) %>%
-    summarise_all(sum) %>% 
-    gather(key = "filter", value = "count") %>%
-    arrange(-count) %>%
-    filter(count >= 50)
-
-top_mc3_filters <- gdc_tbl %>%
-    select(starts_with('mc3__')) %>%
-    summarise_all(sum) %>% 
-    gather(key = "filter", value = "count") %>%
-    arrange(-count) %>%
-    filter(count >= 50)
-    
-top_gdc_filters
-top_mc3_filters
-```
 
 ```{r}
-gdc_tbl %>%
-    group_by(!!! rlang::syms(top_gdc_filters$filter)) %>%
-    count(sort = TRUE)
-```
-
-```{r}
-mc3_tbl %>%
-    select(starts_with('mc3__'), starts_with('gdc__'), starts_with('gdc_gdc__')) %>%
-    summarise_all(sum) %>% 
-    gather(key = "filter", value = "count") %>%
-    arrange(-count)
-```
-
-
-## Good GDC recoverable unique
-
-```{r}
-gdc_recover_pass <- gdc_recoverable_unique_tbl %>%
-    filter(mc3_filter == 'PASS' & gdc_filter == 'PASS' & is.na(gdc_gdc_filter)) %>%
-    select(gdc_tumor_seq_allele1, mc3_tumor_seq_allele1, tumor_seq_allele2, gdc_reference_allele, mc3_reference_allele, everything())
-
-nrow(gdc_recover_pass)
-```
-
-```{r}
-gdc_recover_pass %>% count(mc3_callers) %>% arrange(-n)
-
-gdc_recover_pass %>% count(cancer_type) %>% arrange(-n)
-
-gdc_recover_pass %>% count(gdc_variant_classification) %>% arrange(-n)
-```
-
-13,296 GDC recoverable unique calls without any filter were only called by one caller in MC3.
-
-```{r}
-ggplot(data = gdc_recover_pass %>% mutate(mc3_vaf = mc3_t_alt_count / mc3_t_depth)) +
+ggplot(data = remaining_gdc_calls %>% mutate(mc3_vaf = mc3_t_alt_count / mc3_t_depth)) +
     geom_point(aes(x=mc3_t_depth, y=mc3_t_alt_count))
 ```
 
@@ -144,11 +274,3 @@ gdc_recover_pass %>%
 ```
 
 
-GDC recoverable without any filter unique calls.
-```{r}
-bad_gdc_recover <- gdc_recover_pass %>%
-    filter(gdc_reference_allele != mc3_reference_allele) %>%
-    arrange(tumor_sample_barcode, chromosome, start_position, end_position)
-
-bad_gdc_recover
-```
