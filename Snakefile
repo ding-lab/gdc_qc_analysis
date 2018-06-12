@@ -76,7 +76,7 @@ rule make_db:
         shell('sqlite3 -echo {output} < scripts/group_gdc_callers.sql')
         shell('sqlite3 -echo {output} < scripts/subset_samples.sql')
         shell("python scripts/create_overlap_table.py --db-pth {output}")
-        shell('sqlite3 -echo {output} < scripts/clean_up.sql')
+        # shell('sqlite3 -echo {output} < scripts/clean_up.sql')
 
 
 rule add_protected_mafs_to_db:
@@ -107,4 +107,5 @@ rule all:
     input:
         'processed_data/mc3.public.converted.GRCh38.maf.gz',
         # 'processed_data/mc3.controlled.converted.GRCh38.maf.gz',
+        'processed_data/db_state/has_added_protected_mafs',
         expand('processed_data/{grp}_recoverable_unique_variants.filter_cols.tsv.gz', grp=['gdc', 'mc3']),

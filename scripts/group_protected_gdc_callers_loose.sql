@@ -1,5 +1,5 @@
 -- Group GDC variants by callers
-PRAGMA cache_size=-8394000;
+PRAGMA cache_size=-32000000;
 
 -- The same variant from different callers will be merged together.
 DROP TABLE IF EXISTS gdc_protected_loose_grouped;
@@ -31,7 +31,9 @@ SELECT
     clin_sig, somatic, pubmed, motif_name, motif_pos, high_inf_pos,
     motif_score_change, impact, pick, variant_class, tsl, hgvs_offset, pheno,
     minimised, exac_af, exac_af_adj, exac_af_afr, exac_af_amr, exac_af_eas, exac_af_fin, exac_af_nfe, exac_af_oth, exac_af_sas,
-    gene_pheno, filter, context, src_vcf_id, tumor_bam_uuid, normal_bam_uuid, case_id, gdc_filter, cosmic, mc3_overlap, gdc_validation_status,
+    gene_pheno, group_concat(filter, ';') AS filter, context, src_vcf_id, tumor_bam_uuid, normal_bam_uuid, case_id,
+    group_concat(gdc_filter, ';') AS gdc_filter, cosmic, mc3_overlap,
+    group_concat(gdc_validation_status, ',') AS gdc_validation_status, group_concat(gdc_valid_somatic, ',') AS gdc_valid_somatic,
     cancer_type, group_concat(caller, '|') AS callers, group_concat(raw_file_line_number, ',') AS raw_file_line_number_per_caller
 FROM gdc_protected
 GROUP BY
