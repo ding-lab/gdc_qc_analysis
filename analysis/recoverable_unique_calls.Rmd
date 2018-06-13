@@ -8,20 +8,6 @@ output: html_notebook
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
-library(DBI)
-library(RSQLite)
-```
-
-Connect to the SQLite database. Tweak SQLite caching strategy to use more memory (about 4GB).
-```{r, results='hide'}
-conn = dbConnect(RSQLite::SQLite(), dbname='../processed_data/all_variants.somatic_only.sqlite')
-dbExecute(conn, 'PRAGMA cache_size=-4000000')
-dbExecute(conn, 'PRAGMA temp_store=MEMORY')
-```
-
-Read full overlap table into memory.
-```{r}
-overlap_tbl <- as.tibble(dbReadTable(conn, 'full_overlap'))
 ```
 
 Read recoverable unique calls.
@@ -50,8 +36,12 @@ mc3_recoverable_unique_tbl <- read_tsv(
 mc3_filters_tbl <- read_tsv('../processed_data/mc3_recoverable_unique_variants.filter_cols.tsv.gz')
 
 # Merge with its filter columns
-gdc_tbl <- bind_cols(gdc_recoverable_unique_tbl, gdc_filters_tbl)
-mc3_tbl <- bind_cols(mc3_recoverable_unique_tbl, mc3_filters_tbl)
+gdc_tbl <- bind_cols(gdc_recoverable_unique_tbl, gdc_filters_tbl) %>%
+    rename(gdc_filter_raw = gdc_filter, gdc_gdc_filter_raw = gdc_gdc_filter,
+           gdc_filter = gdc_filter_unique, gdc_gdc_filter = gdc_gdc_filter_unique)
+mc3_tbl <- bind_cols(mc3_recoverable_unique_tbl, mc3_filters_tbl) %>%
+    rename(gdc_filter_raw = gdc_filter, gdc_gdc_filter_raw = gdc_gdc_filter,
+       gdc_filter = gdc_filter_unique, gdc_gdc_filter = gdc_gdc_filter_unique)
 ```
 
 
@@ -106,6 +96,20 @@ gdc_calls %>% count(mc3_callers, sort = TRUE)
 gdc_calls %>% count(gdc_filter, gdc_gdc_filter, sort = TRUE) %>% filter(n >= 10)
 ```
 
+How many of those calls were also called by one caller in GDC:
+```{r}
+gdc_calls %>% filter(!str_detect(gdc_callers, '\\|')) %>% count(gdc_callers, sort = TRUE) %>% summarize(sum(n))
+gdc_calls %>% filter(!str_detect(gdc_callers, '\\|')) %>% count(gdc_callers, sort = TRUE) 
+```
+
+
+For the one call with more than 1 callers (`INDELOCATOR*|VARSCANI*|PINDEL`), check the read depth:
+```{r}
+gdc_calls %>% filter(mc3_ncallers > 1) %>%
+    select(gdc_n_depth_per_caller, starts_with('gdc_t_'), starts_with('mc3_n_'), starts_with('mc3_t_'))
+```
+
+
 Exclude those calls from the rest of the analysis
 ```{r}
 remaining_gdc_calls <- gdc_tbl %>% filter(mc3_filter != 'PASS')
@@ -116,6 +120,13 @@ remaining_gdc_calls <- gdc_tbl %>% filter(mc3_filter != 'PASS')
 ```{r}
 remaining_gdc_calls %>% count(mc3_ncallers, sort = TRUE)
 ```
+
+```{r}
+gdc_calls <- remaining_gdc_calls %>% filter(mc3_ncallers == 1)
+gdc_calls %>% count(gdc_callers, sort = TRUE)
+gdc_calls %>% filter(!str_detect(gdc_callers, '\\|')) %>% count(gdc_callers, sort = TRUE) %>% summarize(sum(n))
+```
+
 
 Exclude those calls from the rest of the analysis
 ```{r}
@@ -147,17 +158,53 @@ gdc_calls %>% count(gdc_variant_classification, sort = TRUE)
 ```
 
 ```{r}
-gdc_calls %>% filter(gdc_variant_classification %in% c('Intron', 'RNA', "5'Flank", "3'Flank", "3'UTR", "5'UTR", "IGR")) %>% nrow
+gdc_calls %>% filter(gdc_variant_classification %in% c('Intron', 'RNA', "5'Flank", "3'Flank", "IGR")) %>% nrow
 gdc_calls %>% filter(gdc_variant_classification %in% c('Splice_Region', 'Splice_Site')) %>% nrow
 ```
 
+Check if all these calls have exon in all effects
+
+```{r}
+calls_nonexonic <- gdc_calls %>% filter(gdc_variant_classification %in% c('Intron', 'RNA', "5'Flank", "3'Flank", "IGR"))
+calls_nonexonic %>% nrow
+calls_nonexonic %>% filter(
+    str_detect(gdc_all_effects, 'exon_variant') 
+    | str_detect(gdc_all_effects, 'missense_variant') 
+    | str_detect(gdc_all_effects, 'prime_UTR_variant')
+    | str_detect(gdc_all_effects, 'synonymous_variant')
+    | str_detect(gdc_all_effects, 'frameshift_variant')
+        ) %>% nrow
+```
+
+Remove all calls that can be explained by exon variant
+
+```{r}
+calls_nonexonic <- calls_nonexonic %>% filter(!(
+    str_detect(gdc_all_effects, 'exon_variant') 
+    | str_detect(gdc_all_effects, 'missense_variant') 
+    | str_detect(gdc_all_effects, 'prime_UTR_variant')
+    | str_detect(gdc_all_effects, 'synonymous_variant')
+    | str_detect(gdc_all_effects, 'frameshift_variant')
+))
+```
+
+```{r}
+gdc_calls %>% filter(gdc_gdc__NonExonic == 1) %>% count(gdc_validation_status, mc3_overlap)
+```
+
+
+Non-exonic calls but exonic in GDC:
 ```{r}
 gdc_calls %>% 
-    filter(gdc_variant_classification %in% c('Missense_Mutation', 'Nonsense_Mutation', 'Silent', 'Nonstop_Mutation')) %>%
+    filter(gdc_variant_classification %in% c('Missense_Mutation', 'Nonsense_Mutation', 'Silent', 'Nonstop_Mutation', "3'UTR", "5'UTR")) %>%
     nrow
 
 gdc_calls %>% 
-    filter(gdc_variant_classification %in% c('Missense_Mutation', 'Nonsense_Mutation', 'Silent', 'Nonstop_Mutation')) %>%
+    filter(gdc_variant_classification %in% c('Missense_Mutation', 'Nonsense_Mutation', 'Silent', 'Nonstop_Mutation', "3'UTR", "5'UTR")) %>%
+    count(gdc_variant_classification, mc3_variant_classification, sort = TRUE)
+
+gdc_calls %>% 
+    filter(gdc_variant_classification %in% c('Missense_Mutation', 'Nonsense_Mutation', 'Silent', 'Nonstop_Mutation', "3'UTR", "5'UTR")) %>%
     count(gdc_hugo_symbol, mc3_hugo_symbol, sort = TRUE) %>%
     filter(n >= 10)
 ```
@@ -186,8 +233,8 @@ gdc_calls %>% count(gdc_filter, gdc_gdc_filter, mc3_filter, sort=TRUE) %>% head(
 ```
 
 ```{r}
+gdc_calls %>% filter(gdc__panel_of_normals == 1) %>% nrow
 gdc_calls %>% filter(gdc__panel_of_normals == 1 | gdc_gdc__gdc_pon == 1) %>% nrow
-gdc_calls %>% filter(gdc_gdc__) %>% nrow
 gdc_calls %>% filter(gdc__panel_of_normals == 1 | gdc_gdc__gdc_pon == 1) %>% 
     count(gdc_variant_classification, sort = TRUE)
 ```
@@ -226,51 +273,142 @@ remaining_gdc_calls %>%
 
 
 
+
 ## MC3 filter analysis
-```{r}
-gdc_filters <- mc3_tbl %>%
-    select(starts_with('gdc__'), starts_with('gdc_gdc__')) %>%
-    summarise_all(sum) %>% 
-    gather(key = "filter", value = "count") %>%
-    arrange(-count)
+Follow the GDC filtering strategy.
 
-mc3_filters <- mc3_tbl %>%
-    select(starts_with('mc3__')) %>%
-    summarise_all(sum) %>% 
-    gather(key = "filter", value = "count") %>%
-    arrange(-count)
-    
-gdc_filters
-mc3_filters
+### MC3 calls's mutation status
+```{r}
+mc3_tbl %>% count(mutation_status)
 ```
 
-
-
-## MC3 recoverable unique filter analysis
+### MC3 calls -- GDC filter
+```{r}
+mc3_tbl %>% count(gdc_gdc__multiallelic, gdc_gdc__nonselectedaliquot)
+```
 
 ```{r}
-mc3_tbl %>%
-    group_by(gdc_filter, gdc_gdc_filter, mc3_filter) %>%
-    summarize(n = n()) %>% arrange(-n) %>%
-    filter(n >= 100)
+mc3_tbl %>% filter(gdc_gdc__nonselectedaliquot == 1 | gdc_gdc__multiallelic == 1) %>% count(cancer_type, sort=TRUE)
+mc3_tbl %>% filter(gdc_gdc__nonselectedaliquot == 1 | gdc_gdc__multiallelic == 1) %>% count(tumor_sample_barcode, cancer_type, sort=TRUE)
 ```
 
 
 ```{r}
-ggplot(data = remaining_gdc_calls %>% mutate(mc3_vaf = mc3_t_alt_count / mc3_t_depth)) +
-    geom_point(aes(x=mc3_t_depth, y=mc3_t_alt_count))
+remaining_mc3_calls <- mc3_tbl %>% filter(gdc_gdc__multiallelic == 0 & gdc_gdc__nonselectedaliquot == 0)
+```
+
+
+### MC3 calls -- gdc_valid_somatic
+
+```{r}
+remaining_mc3_calls %>% count(gdc_validation_status)
 ```
 
 ```{r}
-ggplot(data = gdc_recover_pass %>% mutate(mc3_vaf = mc3_t_alt_count / mc3_t_depth)) +
-    geom_point(aes(x=mc3_n_depth, y=mc3_n_alt_count))
+remaining_mc3_calls %>% count(cancer_type, sort=TRUE)
 ```
 
 ```{r}
-gdc_recover_pass %>%
-    filter(gdc_reference_allele == mc3_reference_allele) %>%
-    filter(gdc_tumor_seq_allele1 != mc3_tumor_seq_allele1) %>%
+remaining_mc3_calls %>% count(tumor_sample_barcode, cancer_type, sort=TRUE) %>% head(20)
+```
+
+
+### GDC filter (`gdc_filter`)
+```{r}
+remaining_mc3_calls %>% count(gdc_filter, gdc_gdc_filter, sort = TRUE)
+```
+
+
+```{r}
+# Only contains gdc__PASS or gdc__panel_of_normals
+mc3_calls <- remaining_mc3_calls %>% filter(
+    !(gdc_filter %in% c('PASS', 'panel_of_normals', 'PASS;panel_of_normals', 'panel_of_normals;PASS'))
+) 
+mc3_calls %>% nrow
+mc3_calls %>% filter(gdc__t_lod_fstar == 1) %>% nrow
+mc3_calls %>% filter(gdc__bSeq == 1) %>% nrow
+mc3_calls %>% filter(gdc__oxog == 1) %>% nrow
+mc3_calls %>% filter(gdc__t_lod_fstar == 1 | gdc__bSeq == 1 | gdc__oxog == 1) %>% nrow
+```
+
+```{r}
+mc3_calls %>% filter(gdc__oxog == 1) %>% count(mc3__oxog)
+```
+
+```{r}
+mc3_calls %>% filter(gdc__bSeq == 1) %>% count(mc3__StrandBias)
+
+```
+
+
+```{r}
+mc3_calls <- mc3_calls %>% filter(gdc__t_lod_fstar == 0 & gdc__bSeq == 0 & gdc__oxog == 0)
+mc3_calls %>% count(gdc_filter, sort = TRUE) %>% head(20)
+```
+
+```{r}
+mc3_calls %>%
+    filter(gdc__Tier1 == 1 | gdc__Tier2 == 1 | gdc__Tier3 == 1 | gdc__Tier4 == 1 | gdc__Tier5 == 1) %>%
     nrow
 ```
 
+```{r}
+mc3_calls <- mc3_calls %>%
+    filter(gdc__Tier1 == 0 & gdc__Tier2 == 0 & gdc__Tier3 == 0 & gdc__Tier4 == 0 & gdc__Tier5 == 0)
+
+mc3_calls %>% count(gdc_filter, sort=TRUE)
+```
+
+```{r}
+mc3_calls %>% filter(gdc__clustered_events == 1) %>% nrow
+```
+
+```{r}
+mc3_calls <- mc3_calls %>% filter(gdc__clustered_events == 0)
+mc3_calls %>% count(gdc_filter, sort=TRUE)
+```
+
+Select calls with PASS or panel_of_normals
+```{r}
+remaining_mc3_calls <- remaining_mc3_calls %>% 
+    filter(gdc_filter %in% c('PASS', 'panel_of_normals', 'PASS;panel_of_normals', 'panel_of_normals;PASS'))
+```
+
+
+### MC3 Overlap 
+```{r}
+remaining_mc3_calls %>% count(mc3_overlap, sort=TRUE)
+```
+
+```{r}
+remaining_mc3_calls <- remaining_mc3_calls %>% filter(mc3_overlap != 'True')
+```
+
+
+### GDC filter (`gdc_gdc_filter`)
+
+```{r}
+remaining_mc3_calls %>%
+    count(gdc_gdc__ndp, gdc_gdc__NonExonic, gdc_gdc__bitgt, gdc_gdc__gdc_pon)
+```
+
+```{r}
+remaining_mc3_calls <- remaining_mc3_calls %>% filter(gdc_gdc__ndp == 0 & gdc_gdc__NonExonic == 0 & gdc_gdc__bitgt == 0 & gdc_gdc__gdc_pon == 0)
+```
+
+### Somatic
+
+```{r}
+remaining_mc3_calls %>% count(somatic)
+```
+
+
+```{r}
+remaining_mc3_calls %>% count(gdc_dbsnp_rs == 'novel')
+```
+
+
+```{r}
+remaining_mc3_calls %>% filter(gdc_dbsnp_rs == 'novel')
+```
 

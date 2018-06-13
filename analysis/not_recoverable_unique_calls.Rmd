@@ -1,0 +1,54 @@
+---
+title: "Not recoverable unique calls"
+output: html_notebook
+---
+
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+
+```{r, results='hide'}
+gdc_tbl <- read_tsv(
+    '../processed_data/gdc_not_recoverable_unique_variants.tsv.gz',
+    col_types = cols(
+        .default = col_character(),
+        start_position = col_integer(), end_position = col_integer(),
+        mc3_t_depth = col_integer(), mc3_t_ref_count = col_integer(), mc3_t_alt_count = col_integer(),
+        mc3_n_depth = col_integer(), mc3_n_ref_count = col_integer(), mc3_n_alt_count = col_integer()
+    )
+)
+
+mc3_tbl <- read_tsv(
+    '../processed_data/mc3_not_recoverable_unique_variants.tsv.gz',
+    col_types = cols(
+        .default = col_character(),
+        start_position = col_integer(), end_position = col_integer(),
+        mc3_t_depth = col_integer(), mc3_t_ref_count = col_integer(), mc3_t_alt_count = col_integer(),
+        mc3_n_depth = col_integer(), mc3_n_ref_count = col_integer(), mc3_n_alt_count = col_integer()
+    )
+)
+```
+
+```{r}
+nrow(gdc_tbl)
+nrow(mc3_tbl)
+```
+
+
+```{r}
+gdc_tbl %>% count(gdc_callers, sort=TRUE)
+```
+
+```{r}
+mc3_tbl %>% count(mc3_callers, sort=TRUE)
+```
+
+```{r}
+mc3_tbl %>% filter(str_detect(mc3_callers, 'PINDEL')) %>% nrow
+mc3_tbl %>% filter(str_detect(mc3_callers, 'INDELOCATOR')) %>% nrow
+mc3_tbl %>% filter(str_detect(mc3_callers, 'PINDEL') | str_detect(mc3_callers, 'INDELOCATOR')) %>% nrow
+```
+
