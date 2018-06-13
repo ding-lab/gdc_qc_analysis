@@ -42,6 +42,7 @@ def gen_filter_indicator_df(df, filter_col, filter_name, sep=';'):
     """
     # Replace NA with PASS and split the compressed filter
     splitted_filter_vals = [x.split(sep) for x in df[filter_col].fillna(value='PASS')]
+    unique_filter = [';'.join(set(vals)) for vals in splitted_filter_vals]
 
     # Count the filter occurence and use the freq to sort filter
     filter_counter = Counter(chain.from_iterable(splitted_filter_vals))
@@ -58,6 +59,11 @@ def gen_filter_indicator_df(df, filter_col, filter_name, sep=';'):
         )),
         columns=ordered_filter_reprs
     ).astype(int)
+    filter_indicator_df.insert(
+        loc=0,
+        column=f'{filter_name}_filter_unique',
+        value=unique_filter
+    )
     return filter_indicator_df
 
 

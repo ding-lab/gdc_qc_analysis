@@ -96,6 +96,18 @@ rule add_protected_mafs_to_db:
         shell("touch {output}")
 
 
+rule extract_recoverable_tables:
+    input:
+        db='processed_data/all_variants.sqlite',
+        db_state='processed_data/db_state/has_added_protected_mafs'
+    output:
+        expand('processed_data/{grp}_recoverable_unique_variants.tsv.gz', grp=['gdc', 'mc3']),
+        expand('processed_data/{grp}_not_recoverable_unique_variants.tsv.gz', grp=['gdc', 'mc3']),
+    shell:
+        'sqlite3 {input.db} < scripts/extract_recoverable_tables.sql'
+
+
+
 rule extract_filter:
     input: 'processed_data/{grp}_recoverable_unique_variants.tsv.gz'
     output: 'processed_data/{grp}_recoverable_unique_variants.filter_cols.tsv.gz'
