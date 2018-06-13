@@ -13,7 +13,8 @@ SELECT g.*,
     gdc.gdc_validation_status AS gdc_validation_status,
     gdc.all_effects AS gdc_all_effects, 
     m.all_effects AS mc3_all_effects,
-    gdc.mc3_overlap
+    gdc.mc3_overlap,
+    m.variant_classification AS mc3_variant_classification
 FROM gdc_recoverable_unique g
 LEFT JOIN mc3_protected m ON g.mc3_protected_rowid=m.rowid
 LEFT JOIN gdc_shared_samples gdc ON g.gdc_rowid=gdc.rowid

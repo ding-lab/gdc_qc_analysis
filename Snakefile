@@ -120,4 +120,5 @@ rule all:
         'processed_data/mc3.public.converted.GRCh38.maf.gz',
         # 'processed_data/mc3.controlled.converted.GRCh38.maf.gz',
         'processed_data/db_state/has_added_protected_mafs',
+        expand('processed_data/{grp}_recoverable_unique_variants.tsv.gz', grp=['gdc', 'mc3']),
         expand('processed_data/{grp}_recoverable_unique_variants.filter_cols.tsv.gz', grp=['gdc', 'mc3']),
