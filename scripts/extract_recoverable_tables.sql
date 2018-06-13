@@ -7,15 +7,16 @@ PRAGMA temp_store=MEMORY;
 -- GDC recoverable unique
 .once '| gzip -c > processed_data/gdc_recoverable_unique_variants.tsv.gz'
 SELECT g.*,
-    m.hugo_symbol AS mc3_hugo_symbol, o.gdc_hugo_symbol,
-    o.reference_allele AS gdc_reference_allele, 
+    m.hugo_symbol AS mc3_hugo_symbol, gdc.hugo_symbol AS gdc_hugo_symbol,
+    gdc.reference_allele AS gdc_reference_allele, 
     m.reference_allele AS mc3_reference_allele,
+    gdc.gdc_validation_status AS gdc_validation_status,
     gdc.all_effects AS gdc_all_effects, 
-    m.all_effects AS mc3_all_effects
+    m.all_effects AS mc3_all_effects,
+    gdc.mc3_overlap
 FROM gdc_recoverable_unique g
 LEFT JOIN mc3_protected m ON g.mc3_protected_rowid=m.rowid
-LEFT JOIN full_overlap o ON g.overlap_rowid=o.rowid
-LEFT JOIN gdc_grouped_callers gdc ON o.gdc_rowid=gdc.rowid
+LEFT JOIN gdc_shared_samples gdc ON g.gdc_rowid=gdc.rowid
 ;
 
 --- MC3 recoverable unique
