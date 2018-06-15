@@ -83,7 +83,7 @@ rule add_protected_mafs_to_db:
     """Add protected MAFs into SQLite database."""
     input:
         mc3_maf='processed_data/mc3.controlled.converted.GRCh38.maf.gz',
-        gdc_mafs=GDC_MAFS,
+        gdc_mafs=GDC_PROTECTED_MAFS,
         db=rules.make_db.output[0]
     output:
         'processed_data/db_state/has_added_protected_mafs'
