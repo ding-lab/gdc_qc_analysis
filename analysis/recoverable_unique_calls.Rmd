@@ -237,6 +237,8 @@ gdc_calls %>% filter(gdc__panel_of_normals == 1) %>% nrow
 gdc_calls %>% filter(gdc__panel_of_normals == 1 | gdc_gdc__gdc_pon == 1) %>% nrow
 gdc_calls %>% filter(gdc__panel_of_normals == 1 | gdc_gdc__gdc_pon == 1) %>% 
     count(gdc_variant_classification, sort = TRUE)
+gdc_calls %>% filter(gdc__panel_of_normals == 1 | gdc_gdc__gdc_pon == 1) %>%
+    count(gdc_validation_status)
 ```
 
 
@@ -252,6 +254,7 @@ remaining_gdc_calls <- remaining_gdc_calls %>% filter(mc3__broad_PoN_v2 == 0)
 ```{r}
 gdc_calls <- remaining_gdc_calls %>% filter(mc3__bitgt == 1)
 gdc_calls %>% count(gdc_filter, gdc_gdc__bitgt, sort = TRUE)
+gdc_calls %>% filter(gdc_gdc__bitgt == 1) %>% count(gdc_validation_status, sort=TRUE)
 ```
 
 ```{r}
