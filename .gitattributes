@@ -1,0 +1,2 @@
+analysis/*.nb.html  linguist-generated
+*.sql               linguist-detectable=true
