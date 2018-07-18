@@ -118,6 +118,7 @@ plot_tbl <- overlap_tbl %>%
     remove_missing(na.rm = TRUE)
 ```
 
+
 ```{r}
 ggplot(plot_tbl, aes(x=VAF, fill=Group)) +
     geom_histogram(binwidth = 0.01) + 

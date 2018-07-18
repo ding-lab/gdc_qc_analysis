@@ -77,6 +77,14 @@ gdc_unique_tbl %>%
     summarize(n = n()) %>% arrange(-n)
 ```
 
+Most of the MuTect calls do not have validation sequencing
+```{r}
+overlap_tbl %>%
+    filter(
+        only_in_gdc == 1 & gdc_callers == 'mutect'
+    ) %>%
+    count(gdc_validation_status, sort=TRUE)
+```
 
 ```{r}
 gdc_unique_tbl %>%

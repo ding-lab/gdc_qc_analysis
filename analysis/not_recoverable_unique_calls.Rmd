@@ -52,3 +52,28 @@ mc3_tbl %>% filter(str_detect(mc3_callers, 'INDELOCATOR')) %>% nrow
 mc3_tbl %>% filter(str_detect(mc3_callers, 'PINDEL') | str_detect(mc3_callers, 'INDELOCATOR')) %>% nrow
 ```
 
+
+### GDC not recoverable unique -- MuTect calls
+
+```{r}
+mutect_only_calls <- gdc_tbl %>% filter(gdc_callers == 'mutect')
+```
+
+```{r}
+mutect_only_calls %>% count(gdc_validation_status)
+```
+
+```{r}
+mutect_only_calls %>% count(gdc_filter, gdc_gdc_filter, sort = TRUE)
+mutect_only_calls %>% filter(str_detect(gdc_gdc_filter, 'wga_pair')) %>% nrow
+```
+
+```{r}
+mutect_only_calls %>% filter(str_detect(gdc_gdc_filter, 'wga')) %>%
+    count(gdc_variant_type)
+
+mutect_only_calls %>% filter((!str_detect(gdc_gdc_filter, 'wga')) | is.na(gdc_gdc_filter)) %>%
+    count(gdc_variant_type)
+```
+
+

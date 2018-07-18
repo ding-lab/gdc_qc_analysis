@@ -12,7 +12,7 @@ library(RSQLite)
 
 Connect to the SQLite database.
 ```{r, results='hide'}
-conn = dbConnect(RSQLite::SQLite(), dbname='../processed_data/all_variants.sqlite')
+conn = dbConnect(RSQLite::SQLite(), dbname='../processed_data/all_variants.somatic_only.sqlite')
 dbExecute(conn, 'PRAGMA cache_size=-16000000')
 dbExecute(conn, 'PRAGMA temp_store=MEMORY')
 overlap_tbl <- as.tibble(dbReadTable(conn, 'full_overlap'))
@@ -32,6 +32,12 @@ mc3_unique_tbl <- overlap_tbl %>%
         mc3_by_pindel = as.integer(str_detect(mc3_callers, 'PINDEL')),
         mc3_by_indelocator = as.integer(str_detect(mc3_callers, 'INDELOCATOR'))
     )
+```
+
+
+```{r}
+mc3_unique_tbl %>%
+    summarize(sum(mc3_by_pindel), sum(mc3_by_indelocator))
 ```
 
 
