@@ -11,8 +11,10 @@ And update `config.yaml` to point to the correct path of all input data.
 Now the pipeline is managed by Snakemake:
 
     snakemake -l            # List all the possible rules
-    snakemake make_db       # Generate the variant database
-    snakemake all           # Generate all output
+    snakemake all           # Generate both the database and overlap files
 
-All the analysis notebooks are under `notebooks/`.
-Note that one must run `notebooks/Analysis.ipynb` after the database is generated.
+
+## Internal information
+There is a working copy of this repository on denali at `/diskmnt/Projects/GDC_QC/gdc_qc_analysis`.
+
+Refer to the lab wiki for details: <https://confluence.ris.wustl.edu/display/DL/GDC-QC+AWG>.
