@@ -124,9 +124,9 @@ ggplot(plot_tbl, aes(x=VAF, fill=Group)) +
     geom_histogram(binwidth = 0.01) + 
     scale_fill_manual(values=c("#cb203a", "#044f83"), guide = FALSE) + 
     facet_grid(mutect_unique ~ ., scales = 'free_y', 
-               labeller = labeller(mutect_unique=c(`TRUE`='MuTect good unique in GDC', `FALSE`='Others'))) + 
+               labeller = labeller(mutect_unique=c(`TRUE`='MuTect unique good in GDC', `FALSE`='Other variants in MC3 and GDC'))) + 
     theme_bw() + 
-    labs(y = NULL, x = 'Variant allele frequency (VAF)')
+    labs(y = 'Number of variants', x = 'Variant allele frequency (VAF)')
 
 ggsave('~/Box Sync/Ding_Lab/Projects_Current/GDC-QC/Figures/mutect_unique_call_vaf.pdf', width = 9, height = 5)
 ggsave('~/Box Sync/Ding_Lab/Projects_Current/GDC-QC/Figures/mutect_unique_call_vaf.png', width = 9, height = 5, dpi=144)
