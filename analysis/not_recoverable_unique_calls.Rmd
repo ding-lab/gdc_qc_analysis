@@ -46,11 +46,38 @@ gdc_tbl %>% count(gdc_callers, sort=TRUE)
 mc3_tbl %>% count(mc3_callers, sort=TRUE)
 ```
 
+
+### MC3 not recoverable unique calls
+
 ```{r}
 mc3_tbl %>% filter(str_detect(mc3_callers, 'PINDEL')) %>% nrow
 mc3_tbl %>% filter(str_detect(mc3_callers, 'INDELOCATOR')) %>% nrow
 mc3_tbl %>% filter(str_detect(mc3_callers, 'PINDEL') | str_detect(mc3_callers, 'INDELOCATOR')) %>% nrow
 ```
+
+```{r}
+mc3_other_than_pindel <- mc3_tbl %>% 
+    filter(!str_detect(mc3_callers, 'PINDEL') & !str_detect(mc3_callers, 'INDELOCATOR'))
+```
+
+```{r}
+mc3_other_than_pindel %>% count(mc3_variant_type)
+```
+
+```{r}
+mc3_other_than_pindel %>% count(mc3_filter, sort = TRUE)
+```
+
+```{r}
+mc3_other_than_pindel %>% filter(mc3_filter == 'PASS') %>%
+    count(mc3_callers, sort = TRUE)
+```
+
+```{r}
+mc3_other_than_pindel %>% filter(mc3_filter == 'PASS') %>%
+    count(cancer_type, sort = TRUE)
+```
+
 
 
 ### GDC not recoverable unique -- MuTect calls

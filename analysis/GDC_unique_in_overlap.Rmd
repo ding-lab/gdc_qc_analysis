@@ -17,6 +17,10 @@ conn = dbConnect(RSQLite::SQLite(), dbname='../processed_data/all_variants.sqlit
 dbExecute(conn, 'PRAGMA cache_size=-4192000')
 dbExecute(conn, 'PRAGMA temp_store=MEMORY')
 overlap_tbl <- as.tibble(dbReadTable(conn, 'full_overlap'))
+wga_samples <- dbGetQuery(
+    conn, 
+    "SELECT DISTINCT tumor_sample_barcode FROM full_overlap WHERE instr(gdc_gdc_filter, 'wga') > 0"
+)$tumor_sample_barcode
 dbDisconnect(conn)
 ```
 
@@ -60,21 +64,41 @@ gdc_unique_tbl %>%
 ```
 
 MuTect alone reports 46,426 SNPs, 11,308 INSs, and 7,741 DELs. Varscan reports 3,202 SNPS, 1,533 INDs, and 6,740 DELs.
+Detemine what's the percentage of WGA sample made by multi-caller
 
+
+```{r}
+# %calls from WGA samples for shared calls
+overlap_tbl %>%
+    filter(shared_by_gdc_mc3 == 1) %>%
+    summarize(n = sum(tumor_sample_barcode %in% wga_samples), 
+              percentage = n / n())
+```
+
+```{r}
+# %calls from WGA samples for GDC unique calls and by >1 callers
+gdc_unique_tbl %>% 
+    mutate(
+        gdc_ncallers = gdc_by_muse + gdc_by_mutect + gdc_by_somaticsniper + gdc_by_varscan
+    ) %>%
+    filter(gdc_ncallers > 1) %>%
+    summarize(n = sum(tumor_sample_barcode %in% wga_samples), 
+          percentage = n / n())
+    
+```
 
 ```{r}
 gdc_unique_tbl %>%
     filter(gdc_callers == 'mutect') %>%
-    group_by(cancer_type, tumor_sample_barcode) %>%
-    summarize(n = n()) %>% arrange(-n)
+    count(cancer_type, tumor_sample_barcode, sort = TRUE) %>%
+    head(20)
 ```
 
 39,910 of the MuTect calls are from wga samples:
 ```{r}
 gdc_unique_tbl %>%
     filter(gdc_callers == 'mutect' & str_detect(gdc_gdc_filter, 'wga_')) %>%
-    group_by(gdc_variant_type) %>%
-    summarize(n = n()) %>% arrange(-n)
+    count(gdc_variant_type, sort = TRUE)
 ```
 
 Most of the MuTect calls do not have validation sequencing
@@ -85,6 +109,17 @@ overlap_tbl %>%
     ) %>%
     count(gdc_validation_status, sort=TRUE)
 ```
+
+MuTect only calls with valid sequencing
+```{r}
+overlap_tbl %>%
+    filter(
+        only_in_gdc == 1 & gdc_callers == 'mutect' & gdc_validation_status == 'Valid'
+    ) %>%
+    count(cancer_type)
+```
+
+
 
 ```{r}
 gdc_unique_tbl %>%

@@ -110,6 +110,12 @@ gdc_calls %>% filter(mc3_ncallers > 1) %>%
 ```
 
 
+```{r}
+gdc_tbl %>% filter(mc3_ncallers == 1) %>% count(gdc_callers, sort=TRUE)
+```
+
+
+
 Exclude those calls from the rest of the analysis
 ```{r}
 remaining_gdc_calls <- gdc_tbl %>% filter(mc3_filter != 'PASS')
