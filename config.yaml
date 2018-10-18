@@ -1,9 +1,9 @@
 MC3_MAF_PTHS:
-    public: '../GDC_QC_data/MC3/mc3.v0.2.8.PUBLIC.maf.gz'
-    controlled: '../GDC_QC_data/MC3/mc3.v0.2.8.CONTROLLED.CT.maf.gz'
+    public: '/diskmnt/Datasets/TCGA/MC3/mc3.v0.2.8.PUBLIC.maf'
+    controlled: '/diskmnt/Datasets/TCGA/MC3/mc3.v0.2.8.CONTROLLED.maf.gz'
 
-GDC_DATA_ROOT: '../GDC_QC_data/GDC_data_release/Release_10.0'
+GDC_DATA_ROOT: '/diskmnt/Datasets/TCGA/GDC_GRCh38/Release_10.0'
 
 CROSS_MAP_BIN: '~/miniconda3/envs/crossmap/bin/CrossMap.py'
 
-CHAIN_PTH: '../GDC_QC_data/liftOver_chains/GRCh37_to_GRCh38.chain.gz'
+CHAIN_PTH: '/diskmnt/Datasets/TCGA/MC3/GRCh38_liftOver/GRCh37_to_GRCh38.chain.gz'
