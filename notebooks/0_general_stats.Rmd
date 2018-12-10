@@ -1,0 +1,130 @@
+---
+title: "General statistics"
+output: html_notebook
+---
+We only focus on SNPs in this study.
+
+```{r}
+library(tidyverse)
+library(DBI)
+library(RSQLite)
+```
+
+Connect to the SQLite database.
+```{r, results='hide'}
+conn = dbConnect(RSQLite::SQLite(), dbname='../processed_data/all_variants.sqlite')
+dbExecute(conn, 'PRAGMA cache_size=-4000000')
+dbExecute(conn, 'PRAGMA temp_store=MEMORY')
+dbExecute(conn, 'PRAGMA query_only=1')
+```
+
+```{r}
+dbListTables(conn)
+```
+
+```{r}
+overlap_tbl <- as.tibble(dbReadTable(conn, 'full_overlap'))
+snp_tbl <- overlap_tbl %>%
+        filter(mc3_variant_type == 'SNP' | gdc_variant_type == 'SNP')
+```
+
+```{r}
+cat('Total mutations (all types):', nrow(overlap_tbl), '\n')
+cat('Total SNPs:', nrow(snp_tbl), '\n')
+```
+
+```{r}
+cat('Only in GDC:', snp_tbl %>% filter(only_in_gdc == 1) %>% nrow(), '\n')
+cat('Only in MC3:', snp_tbl %>% filter(only_in_mc3 == 1) %>% nrow(), '\n')
+cat('Shared:', snp_tbl %>% filter(shared_by_gdc_mc3 == 1) %>% nrow(), '\n')
+```
+
+Total number of genes
+```{r}
+length(union(snp_tbl$gdc_hugo_symbol, snp_tbl$mc3_hugo_symbol))
+```
+
+
+## Recoverable unique calls
+
+```{r}
+gdc_recoverable_unique_tbl <- read_tsv(
+    '../processed_data/gdc_recoverable_unique_variants.tsv.gz',
+    col_types = cols(
+        .default = col_character(),
+        start_position = col_integer(), end_position = col_integer(),
+        mc3_t_depth = col_integer(), mc3_t_ref_count = col_integer(), mc3_t_alt_count = col_integer(),
+        mc3_n_depth = col_integer(), mc3_n_ref_count = col_integer(), mc3_n_alt_count = col_integer(),
+        overlap_rowid = col_integer(), gdc_rowid = col_integer(), mc3_protected_rowid = col_integer()
+    )
+) %>% filter(gdc_variant_type == 'SNP')
+
+mc3_recoverable_unique_tbl <- read_tsv(
+    '../processed_data/mc3_recoverable_unique_variants.tsv.gz',
+        col_types = cols(
+        .default = col_character(),
+        start_position = col_integer(), end_position = col_integer(),
+        mc3_t_depth = col_integer(), mc3_t_ref_count = col_integer(), mc3_t_alt_count = col_integer(),
+        mc3_n_depth = col_integer(), mc3_n_ref_count = col_integer(), mc3_n_alt_count = col_integer(),
+        overlap_rowid = col_integer(), mc3_rowid = col_integer(), gdc_protected_rowid = col_integer()
+    )
+) %>% filter(mc3_variant_type == 'SNP')
+```
+
+
+```{r}
+cat('GDC recoverable unique calls:', nrow(gdc_recoverable_unique_tbl), '\n')
+cat('MC3 recoverable unique calls:', nrow(mc3_recoverable_unique_tbl), '\n')
+```
+
+
+## Not recoverable unique calls
+
+```{r}
+gdc_unrecoverable_unique_tbl <- read_tsv(
+    '../processed_data/gdc_not_recoverable_unique_variants.tsv.gz',
+    col_types = cols(
+        .default = col_character(),
+        start_position = col_integer(), end_position = col_integer(),
+        mc3_t_depth = col_integer(), mc3_t_ref_count = col_integer(), mc3_t_alt_count = col_integer(),
+        mc3_n_depth = col_integer(), mc3_n_ref_count = col_integer(), mc3_n_alt_count = col_integer()
+    )
+) %>% filter(gdc_variant_type == 'SNP')
+
+mc3_unrecoverable_unique_tbl <- read_tsv(
+    '../processed_data/mc3_not_recoverable_unique_variants.tsv.gz',
+    col_types = cols(
+        .default = col_character(),
+        start_position = col_integer(), end_position = col_integer(),
+        mc3_t_depth = col_integer(), mc3_t_ref_count = col_integer(), mc3_t_alt_count = col_integer(),
+        mc3_n_depth = col_integer(), mc3_n_ref_count = col_integer(), mc3_n_alt_count = col_integer()
+    )
+) %>% filter(mc3_variant_type == 'SNP')
+```
+
+```{r}
+cat('GDC unrecoverable unique calls:', nrow(gdc_unrecoverable_unique_tbl), '\n')
+cat('MC3 unrecoverable unique calls:', nrow(mc3_unrecoverable_unique_tbl), '\n')
+```
+
+
+### See why recoverable and unrecoverable don't sum up to MC3 unique
+```{r}
+mc3_unrecoverable_unique_tbl %>% distinct(mc3_rowid) %>% nrow()
+mc3_recoverable_unique_tbl %>% distinct(mc3_rowid) %>% nrow()
+```
+
+```{r}
+dup_mc3_rowids <- mc3_recoverable_unique_tbl %>% count(mc3_rowid) %>% filter(n >= 2) %>% pull(mc3_rowid)
+```
+
+Using chromosome position will over de-duplicate.
+```{r}
+mc3_recoverable_unique_tbl %>% distinct(chromosome, start_position, end_position, tumor_sample_barcode, tumor_seq_allele2) %>% nrow()
+```
+
+### See why recoverable and unrecoverable don't sum up to GDC unique
+```{r}
+gdc_unrecoverable_unique_tbl %>% distinct(gdc_rowid) %>% nrow()
+gdc_recoverable_unique_tbl %>% distinct(gdc_rowid) %>% nrow()
+```
