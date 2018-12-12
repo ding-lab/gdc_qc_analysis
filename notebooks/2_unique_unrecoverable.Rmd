@@ -1,0 +1,341 @@
+---
+title: "Unique unrecoverable calls"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(DBI)
+library(RSQLite)
+```
+
+```{r}
+conn = dbConnect(RSQLite::SQLite(), dbname='../processed_data/all_variants.sqlite')
+dbExecute(conn, 'PRAGMA cache_size=-4000000')
+dbExecute(conn, 'PRAGMA temp_store=MEMORY')
+dbExecute(conn, 'PRAGMA query_only=1')
+dbListTables(conn)
+```
+
+Read in the data
+```{r}
+gdc_unrecoverable_unique_tbl <- read_tsv(
+    '../processed_data/gdc_not_recoverable_unique_variants.tsv.gz',
+    col_types = cols(
+        .default = col_character(),
+        start_position = col_integer(), end_position = col_integer(),
+        mc3_t_depth = col_integer(), mc3_t_ref_count = col_integer(), mc3_t_alt_count = col_integer(),
+        mc3_n_depth = col_integer(), mc3_n_ref_count = col_integer(), mc3_n_alt_count = col_integer()
+    )
+) %>% filter(gdc_variant_type == 'SNP')
+
+mc3_unrecoverable_unique_tbl <- read_tsv(
+    '../processed_data/mc3_not_recoverable_unique_variants.tsv.gz',
+    col_types = cols(
+        .default = col_character(),
+        start_position = col_integer(), end_position = col_integer(),
+        mc3_t_depth = col_integer(), mc3_t_ref_count = col_integer(), mc3_t_alt_count = col_integer(),
+        mc3_n_depth = col_integer(), mc3_n_ref_count = col_integer(), mc3_n_alt_count = col_integer()
+    )
+) %>% filter(mc3_variant_type == 'SNP')
+```
+
+```{r}
+wga_samples <- dbGetQuery(
+        conn, 
+        "SELECT DISTINCT tumor_sample_barcode FROM full_overlap WHERE instr(gdc_gdc_filter, 'wga') > 0"
+    ) %>% pull(tumor_sample_barcode)
+```
+
+## MC3 unrecoverable unique calls
+```{r}
+mc3_tbl <- mc3_unrecoverable_unique_tbl %>%
+    mutate(
+        mc3_by_muse = as.integer(str_detect(mc3_callers, 'MUSE')),
+        mc3_by_mutect = as.integer(str_detect(mc3_callers, 'MUTECT')),
+        mc3_by_somaticsniper = as.integer(str_detect(mc3_callers, 'SOMATICSNIPER')),
+        mc3_by_radia = as.integer(str_detect(mc3_callers, 'RADIA')),
+        mc3_by_varscan = as.integer(str_detect(mc3_callers, 'VARSCAN')),
+        mc3_by_pindel = as.integer(str_detect(mc3_callers, 'PINDEL')),
+        mc3_by_indelocator = as.integer(str_detect(mc3_callers, 'INDELOCATOR')),
+        is_wga = ifelse(tumor_sample_barcode %in% wga_samples, 'Y', 'N')
+    )
+```
+
+
+
+### Difference by Caller and WGA 
+```{r}
+mc3_per_caller_wga_tbl <- mc3_tbl %>% 
+    count(mc3_callers, is_wga, sort=TRUE) %>%
+    rename(num_unrecoverable_mut = n) %>%
+    group_by(is_wga) %>%
+    mutate(percentage_unrecoverable = num_unrecoverable_mut / sum(num_unrecoverable_mut) * 100) %>%
+    ungroup() %>%
+    full_join(
+        as.tibble(dbGetQuery(
+            conn, 
+            "
+            WITH tab AS (
+                SELECT 
+                    mc3_callers, mc3_ncallers,
+                    CASE WHEN mc3_filter IS NULL THEN 'N' 
+                         WHEN instr(mc3_filter, 'wga') > 0 THEN 'Y' 
+                         ELSE 'N' END AS is_wga 
+                FROM full_overlap 
+                WHERE shared_by_gdc_mc3 = 1 OR only_in_mc3 = 1
+            )
+            SELECT mc3_callers, mc3_ncallers, is_wga, count(*) AS num_mut
+            FROM tab                  
+            GROUP BY mc3_callers, is_wga
+            "
+        )) %>%
+            group_by(is_wga) %>%
+            mutate(percentage = num_mut / sum(num_mut) * 100) %>%
+            ungroup(),
+        by = c("mc3_callers", "is_wga")
+    ) %>%
+    # Fill NA with 0
+    mutate_all(funs(replace(., is.na(.), 0))) %>%
+    select(mc3_callers, mc3_ncallers, is_wga, percentage_unrecoverable, percentage, num_unrecoverable_mut, num_mut)
+
+mc3_per_caller_wga_tbl
+```
+
+Make sure the percentages sum up to 1
+```{r}
+mc3_per_caller_wga_tbl %>% group_by(is_wga) %>% summarize(sum(percentage_unrecoverable), sum(percentage))
+```
+
+Plot it
+```{r, fig.width=6, fig.height=3.5}
+big_percent_two_mc3_callers <- mc3_per_caller_wga_tbl %>% 
+    filter(percentage >= 5 | percentage_unrecoverable >= 5, mc3_ncallers == 2) %>% 
+    pull(mc3_callers)
+
+plot_tbl <- mc3_per_caller_wga_tbl %>% 
+    mutate(
+        mc3_callers = factor(case_when(
+            mc3_callers %in% big_percent_two_mc3_callers ~ str_replace(str_to_lower(mc3_callers), '\\|', '\n'),
+            mc3_ncallers == 2 ~ 'other 2 callers',
+            mc3_ncallers == 3 ~ 'any 3 callers',
+            mc3_ncallers >= 4 ~ 'any ≥4 callers'
+        ), levels = c('somaticsniper\nvarscans', 'radia\nvarscans', 'mutect\nmuse', 
+                      'other 2 callers', 'any 3 callers', 'any ≥4 callers')
+        )
+    ) %>% 
+    group_by(mc3_callers, is_wga) %>%
+    summarize(
+        percentage_unrecoverable = sum(percentage_unrecoverable), 
+        percentage = sum(percentage)
+    ) %>%
+    rename(unrecoverable=percentage_unrecoverable, shared=percentage) %>%
+    gather(key = 'type', value = 'percentage', -mc3_callers, -is_wga) %>%
+    mutate(
+        type = factor(
+            type, 
+            levels = c('unrecoverable', 'shared')
+        )
+    ) %>%
+    arrange(percentage)
+
+ggplot(plot_tbl, aes(x = mc3_callers, fill = type, y = percentage)) + 
+    geom_col(position = 'dodge') + 
+    scale_fill_manual(
+        name = NULL, 
+        values = c('unrecoverable' = '#ED909F', 'shared' = 'gray30'),
+        labels = c('MC3 unrecoverable unique', 'All MC3 calls')
+    ) + 
+    facet_grid(~ is_wga, labeller = labeller(is_wga = c('N' = 'Not WGA samples', 'Y' = 'WGA samples'), scales = 'fixed_y')) + 
+    scale_y_continuous(labels = scales::percent_format(scale = 1)) + 
+    labs(x = NULL, y = 'Percentage of total SNV calls') + 
+    theme_bw() + 
+    theme(
+        axis.text.x = element_text(angle = 35, hjust = 1, vjust = 1),
+        legend.justification = c(0, 1),
+        legend.position = c(0, 1),
+        legend.background = element_blank()
+    )
+
+ggsave('../figures/MC3_unrecoverable_unique_snv_calls_per_caller.pdf', width = 6, height = 3.5)
+```
+
+
+### Exploring possible sources of difference
+filter out WGA calls
+```{r}
+mc3_tbl <- mc3_tbl %>% filter(is_wga == 'N')
+```
+
+filter difference
+```{r}
+mc3_tbl %>% count(mc3_filter, sort = TRUE)
+```
+
+Calculate the VAF
+```{r}
+x_breaks <- seq(from = 0, to = 1, by =  0.05)
+
+plot_tbl <- mc3_tbl %>% 
+    mutate(
+        mc3_vaf = as.integer(mc3_t_alt_count) / as.integer(mc3_t_depth)
+    )
+
+ggplot(plot_tbl, aes(x=mc3_vaf)) + 
+    geom_histogram(breaks = x_breaks)
+```
+
+Caller difference
+```{r}
+mc3_tbl %>% count(mc3_callers, sort = TRUE)
+```
+
+Gene difference 
+```{r}
+mc3_tbl %>% 
+    count(mc3_hugo_symbol, sort = TRUE) %>% 
+    head(10)
+```
+
+```{r}
+mc3_tbl %>% count(tumor_sample_barcode, sort = TRUE)
+```
+
+Manual investigation
+```{r}
+mc3_tbl %>% filter(mc3_t_alt_count / mc3_t_depth >= 0.1, mc3_variant_classification == 'Missense_Mutation') %>% head(10)
+```
+
+
+
+## GDC unrecoverable unique calls
+```{r}
+gdc_tbl <- gdc_unrecoverable_unique_tbl %>% 
+    mutate(is_wga = ifelse(!is.na(gdc_gdc_filter) & str_detect(gdc_gdc_filter, 'wga'), 'Y', 'N'))
+```
+
+```{r}
+gdc_tbl %>% count(gdc_callers, sort=TRUE) %>% head()
+```
+
+```{r}
+gdc_tbl %>% count(is_wga, sort = TRUE)
+```
+
+
+### Difference by caller and WGA 
+Make sure there is a significant increase of mutect only call in WGA samples.
+```{r}
+sort_gdc_callers <- function(gdc_callers, ...) {
+    gdc_callers_fixed_order <- c('muse', 'mutect', 'somaticsniper', 'varscan')
+    gdc_by_muse <- as.integer(str_detect(gdc_callers, 'muse'))
+    gdc_by_mutect <- as.integer(str_detect(gdc_callers, 'mutect'))
+    gdc_by_somaticsniper <- as.integer(str_detect(gdc_callers, 'somaticsniper'))
+    gdc_by_varscan <- as.integer(str_detect(gdc_callers, 'varscan'))
+    str_c(gdc_callers_fixed_order[which(c(gdc_by_muse, gdc_by_mutect, gdc_by_somaticsniper, gdc_by_varscan) == 1)], collapse = '|')
+}
+
+gdc_per_caller_wga_tbl <- gdc_tbl %>% 
+    count(gdc_callers, is_wga, sort=TRUE) %>%
+    rename(num_unrecoverable_mut = n) %>%
+    group_by(is_wga) %>%
+    mutate(percentage_unrecoverable = num_unrecoverable_mut / sum(num_unrecoverable_mut) * 100) %>%
+    ungroup() %>%
+    full_join(
+        as.tibble(dbGetQuery(
+            conn, 
+            "
+            WITH shared AS (
+                SELECT 
+                    gdc_callers,
+                    CASE WHEN gdc_gdc_filter IS NULL THEN 'N' 
+                         WHEN instr(gdc_gdc_filter, 'wga') > 0 THEN 'Y' 
+                         ELSE 'N' END AS is_wga 
+                FROM full_overlap 
+                WHERE shared_by_gdc_mc3 = 1 OR only_in_gdc = 1
+            )
+            SELECT gdc_callers, is_wga, count(*) AS num_mut
+            FROM shared                    
+            GROUP BY gdc_callers, is_wga
+            "
+        )) %>%
+            group_by(is_wga) %>%
+            mutate(percentage = num_mut / sum(num_mut) * 100) %>%
+            ungroup(),
+        by = c("gdc_callers", "is_wga")
+    ) %>%
+    # Fill NA with 0
+    mutate_all(funs(replace(., is.na(.), 0))) %>%
+    # GDC callers can have multiple orders
+    mutate(gdc_callers = pmap_chr(., .f = sort_gdc_callers)) %>%
+    group_by(gdc_callers, is_wga) %>%
+    summarize(
+        percentage_unrecoverable = sum(percentage_unrecoverable), percentage = sum(percentage),
+        num_unrecoverable_mut = sum(num_unrecoverable_mut), num_mut = sum(num_mut)
+    ) %>%
+    arrange(-percentage_unrecoverable) %>%
+    ungroup() %>%
+    select(gdc_callers, is_wga, percentage_unrecoverable, percentage, num_unrecoverable_mut, num_mut)
+gdc_per_caller_wga_tbl
+```
+
+Make sure the percentages sum up to 1
+```{r}
+gdc_per_caller_wga_tbl %>% group_by(is_wga) %>% summarize(sum(percentage_unrecoverable), sum(percentage))
+```
+
+
+Plot it
+```{r, fig.width=6, fig.height=3.5}
+plot_tbl <- gdc_per_caller_wga_tbl %>%
+    mutate(
+        # Break down the caller combinations
+        gdc_callers = factor(
+            case_when(
+                gdc_callers == 'muse|mutect|somaticsniper|varscan' ~ 'all 4 callers',
+                gdc_callers %in% c('mutect', 'varscan', 'somaticsniper', 'muse') ~ gdc_callers,
+                TRUE ~ 'any other caller\ncombinations'
+            ),
+            levels = c('mutect', 'varscan', 'somaticsniper', 'muse', 'all 4 callers', 'any other caller\ncombinations')
+        )
+    ) %>%
+    select(gdc_callers, is_wga, unrecoverable=percentage_unrecoverable, shared=percentage) %>%
+    gather(key = 'type', value = 'percentage', -gdc_callers, -is_wga) %>%
+    mutate(
+        type = factor(
+            type, 
+            levels = c('unrecoverable', 'shared')
+        )
+    )
+
+ggplot(plot_tbl, aes(x = gdc_callers, fill = type, y = percentage)) + 
+    geom_col(position = 'dodge') + 
+    scale_fill_manual(
+        name = NULL, 
+        values = c('unrecoverable' = '#80A9BF', 'shared' = 'gray30'),
+        labels = c('GDC unrecoverable unique', 'All GDC calls')
+    ) + 
+    facet_grid(~ is_wga, labeller = labeller(is_wga = c('N' = 'Not WGA samples', 'Y' = 'WGA samples'))) + 
+    scale_y_continuous(labels = scales::percent_format(scale = 1)) + 
+    labs(x = NULL, y = 'Percentage of total SNV calls') + 
+    theme_bw() + 
+    theme(
+        axis.text.x = element_text(angle = 35, hjust = 1),
+        legend.justification = c(0, 1),
+        legend.position = c(0, 1),
+        legend.background = element_blank()
+    )
+
+ggsave('../figures/GDC_unrecoverable_unique_snv_calls_per_caller.pdf', width = 6, height = 3.5)
+```
+
+See if there is any special filters about those mutations:
+```{r}
+gdc_tbl %>% count(gdc_filter, sort = TRUE) %>% head()
+```
+
+Gene difference:
+```{r}
+gdc_tbl %>% count(gdc_hugo_symbol, sort = TRUE) %>% head(10)
+```
+

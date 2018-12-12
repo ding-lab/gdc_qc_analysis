@@ -1,0 +1,77 @@
+---
+title: "Per sample overlap analysis"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(DBI)
+library(RSQLite)
+```
+
+```{r}
+conn = dbConnect(RSQLite::SQLite(), dbname='../processed_data/all_variants.sqlite')
+dbExecute(conn, 'PRAGMA cache_size=-4000000')
+dbExecute(conn, 'PRAGMA temp_store=MEMORY')
+dbExecute(conn, 'PRAGMA query_only=1')
+dbListTables(conn)
+```
+
+Read overlap 
+```{r}
+overlap_tbl <- as.tibble(dbReadTable(conn, 'full_overlap')) %>%
+        filter(mc3_variant_type == 'SNP' | gdc_variant_type == 'SNP')
+```
+
+Get the list of WGA samples in GDC and MC3.
+```{r}
+gdc_wga_samples <- dbGetQuery(
+        conn, 
+        "SELECT DISTINCT tumor_sample_barcode FROM full_overlap WHERE instr(gdc_gdc_filter, 'wga') > 0"
+    ) %>% pull(tumor_sample_barcode)
+mc3_wga_samples <- dbGetQuery(
+        conn, 
+        "SELECT DISTINCT tumor_sample_barcode FROM full_overlap WHERE instr(mc3_filter, 'wga') > 0"
+    ) %>% 
+    pull(tumor_sample_barcode)
+```
+
+Make sure the WGA definition is the same for both GDC and MC3.
+```{r}
+all.equal(gdc_wga_samples, mc3_wga_samples)
+wga_samples <- gdc_wga_samples
+```
+
+
+Calculate the per sample overlap count
+```{r}
+per_sample_overlap <- group_by(overlap_tbl, tumor_sample_barcode) %>%
+    summarize(
+        n_shared = sum(shared_by_gdc_mc3),
+        n_mc3_unique = sum(only_in_mc3),
+        n_gdc_unique = sum(only_in_gdc),
+        n_total = n(),
+        cancer_type = cancer_type[1]  # same for all rows of a sample
+    ) %>%
+    mutate(
+        mc3_shared_percent = n_shared / (n_mc3_unique + n_shared),
+        gdc_shared_percent = n_shared / (n_gdc_unique + n_shared),
+        is_wga = tumor_sample_barcode %in% wga_samples
+    ) %>% 
+    arrange(cancer_type)
+```
+
+```{r, fig.width=9, fig.asp=0.9, fig.dpi=300}
+ggplot(per_sample_overlap, aes(x=gdc_shared_percent, y=mc3_shared_percent, size=n_total, color=is_wga)) +
+    geom_point(alpha=0.65) + 
+    scale_x_continuous(name="GDC shared calls", labels = scales::percent) +
+    scale_y_continuous(name="MC3 shared calls", labels = scales::percent) + 
+    scale_color_manual(name="WGA sample", values = c("FALSE"="#101010", "TRUE"="#D55E00"), labels = c("No", "Yes")) + 
+    scale_size_area(name="Total calls", max_size = 5, breaks = c(10, 100, 1000, 10000), trans='sqrt') + 
+    facet_wrap(~ cancer_type, nrow = 2) +
+    theme_bw() + 
+    coord_fixed(ratio = 1) + 
+    labs(title = "Somatic mutation call overlap per sample")
+
+ggsave('../figures/GDC_MC3_overlap_per_sample.pdf', width = 9, height = 8.5)
+```
