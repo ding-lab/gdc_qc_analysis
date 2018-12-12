@@ -143,7 +143,7 @@ ggplot(plot_tbl, aes(x = mc3_callers, fill = type, y = percentage)) +
     geom_col(position = 'dodge') + 
     scale_fill_manual(
         name = NULL, 
-        values = c('unrecoverable' = '#ED909F', 'shared' = 'gray30'),
+        values = c('unrecoverable' = '#80A9BF', 'shared' = 'gray30'),
         labels = c('MC3 unrecoverable unique', 'All MC3 calls')
     ) + 
     facet_grid(~ is_wga, labeller = labeller(is_wga = c('N' = 'Not WGA samples', 'Y' = 'WGA samples'), scales = 'fixed_y')) + 
@@ -158,6 +158,7 @@ ggplot(plot_tbl, aes(x = mc3_callers, fill = type, y = percentage)) +
     )
 
 ggsave('../figures/MC3_unrecoverable_unique_snv_calls_per_caller.pdf', width = 6, height = 3.5)
+ggsave('../figures/MC3_unrecoverable_unique_snv_calls_per_caller.png', width = 6, height = 3.5, dpi = 300)
 ```
 
 
@@ -312,7 +313,7 @@ ggplot(plot_tbl, aes(x = gdc_callers, fill = type, y = percentage)) +
     geom_col(position = 'dodge') + 
     scale_fill_manual(
         name = NULL, 
-        values = c('unrecoverable' = '#80A9BF', 'shared' = 'gray30'),
+        values = c('unrecoverable' = '#ED909F', 'shared' = 'gray30'),
         labels = c('GDC unrecoverable unique', 'All GDC calls')
     ) + 
     facet_grid(~ is_wga, labeller = labeller(is_wga = c('N' = 'Not WGA samples', 'Y' = 'WGA samples'))) + 
@@ -327,6 +328,7 @@ ggplot(plot_tbl, aes(x = gdc_callers, fill = type, y = percentage)) +
     )
 
 ggsave('../figures/GDC_unrecoverable_unique_snv_calls_per_caller.pdf', width = 6, height = 3.5)
+ggsave('../figures/GDC_unrecoverable_unique_snv_calls_per_caller.png', width = 6, height = 3.5, dpi = 300)
 ```
 
 See if there is any special filters about those mutations:
