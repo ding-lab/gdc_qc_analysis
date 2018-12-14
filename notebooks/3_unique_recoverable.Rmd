@@ -1,0 +1,321 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(DBI)
+library(RSQLite)
+```
+
+```{r}
+conn = dbConnect(RSQLite::SQLite(), dbname='../processed_data/all_variants.sqlite')
+dbExecute(conn, 'PRAGMA cache_size=-4000000')
+dbExecute(conn, 'PRAGMA temp_store=MEMORY')
+dbExecute(conn, 'PRAGMA query_only=1')
+dbListTables(conn)
+```
+
+Read recoverable unique calls.
+```{r, results='hide'}
+gdc_unique_recoverable_tbl <- read_tsv(
+    '../processed_data/gdc_recoverable_unique_variants.tsv.gz',
+    col_types = cols(
+        .default = col_character(),
+        start_position = col_integer(), end_position = col_integer(),
+        mc3_t_depth = col_integer(), mc3_t_ref_count = col_integer(), mc3_t_alt_count = col_integer(),
+        mc3_n_depth = col_integer(), mc3_n_ref_count = col_integer(), mc3_n_alt_count = col_integer(),
+        overlap_rowid = col_integer(), gdc_rowid = col_integer(), mc3_protected_rowid = col_integer()
+    )
+)
+gdc_filters_tbl <- read_tsv('../processed_data/gdc_recoverable_unique_variants.filter_cols.tsv.gz') 
+mc3_unique_recoverable_tbl <- read_tsv(
+    '../processed_data/mc3_recoverable_unique_variants.tsv.gz',
+        col_types = cols(
+        .default = col_character(),
+        start_position = col_integer(), end_position = col_integer(),
+        mc3_t_depth = col_integer(), mc3_t_ref_count = col_integer(), mc3_t_alt_count = col_integer(),
+        mc3_n_depth = col_integer(), mc3_n_ref_count = col_integer(), mc3_n_alt_count = col_integer(),
+        overlap_rowid = col_integer(), mc3_rowid = col_integer(), gdc_protected_rowid = col_integer()
+    )
+)
+mc3_filters_tbl <- read_tsv('../processed_data/mc3_recoverable_unique_variants.filter_cols.tsv.gz')
+
+# Merge with its filter columns
+gdc_tbl <- bind_cols(gdc_unique_recoverable_tbl, gdc_filters_tbl) %>%
+    rename(gdc_filter_raw = gdc_filter, gdc_gdc_filter_raw = gdc_gdc_filter,
+           gdc_filter = gdc_filter_unique, gdc_gdc_filter = gdc_gdc_filter_unique) %>%
+    filter(gdc_variant_type == 'SNP')
+mc3_tbl <- bind_cols(mc3_unique_recoverable_tbl, mc3_filters_tbl) %>%
+    rename(gdc_filter_raw = gdc_filter, gdc_gdc_filter_raw = gdc_gdc_filter,
+       gdc_filter = gdc_filter_unique, gdc_gdc_filter = gdc_gdc_filter_unique) %>%
+    filter(mc3_variant_type == 'SNP')
+```
+
+The recoverable calls are duplicated.
+```{r}
+duplicated(gdc_tbl$gdc_rowid) %>% table()
+duplicated(mc3_tbl$mc3_rowid) %>% table()
+```
+
+```{r}
+gdc_tbl <- gdc_tbl %>% distinct(gdc_rowid, .keep_all = TRUE)
+mc3_tbl <- mc3_tbl %>% distinct(mc3_rowid, .keep_all = TRUE)
+```
+
+
+
+## GDC
+A quick overview of the filter flags.
+```{r}
+gdc_tbl %>%
+    group_by(gdc_filter, gdc_gdc_filter, mc3_filter) %>%
+    summarize(n = n()) %>% arrange(-n) %>%
+    filter(n >= 100)
+```
+
+List the occurence of individual filters
+```{r}
+gdc_filters <- gdc_tbl %>%
+    select(starts_with('gdc__'), starts_with('gdc_gdc__')) %>%
+    summarise_all(sum) %>% 
+    gather(key = "filter", value = "count") %>%
+    arrange(-count)
+
+mc3_filters <- gdc_tbl %>%
+    select(starts_with('mc3__')) %>%
+    summarise_all(sum) %>% 
+    gather(key = "filter", value = "count") %>%
+    arrange(-count)
+    
+gdc_filters
+mc3_filters
+```
+
+
+### GDC calls filtered by MC3 one-caller constraint
+```{r}
+gdc_calls <- gdc_tbl %>% filter(mc3_ncallers == 1)
+gdc_calls %>% count(mc3_callers, sort = TRUE)
+gdc_calls %>% count(gdc_callers, sort = TRUE) 
+```
+
+```{r}
+nrow(gdc_calls) / nrow(gdc_tbl)
+```
+
+```{r}
+gdc_calls %>% count(mc3_filter, gdc_filter, gdc_gdc_filter, sort = TRUE) %>% filter(n >= 10)
+```
+
+Exclude those calls from the rest of the analysis
+```{r}
+remaining_gdc_tbl <- gdc_tbl %>% filter(mc3_ncallers > 1)
+```
+
+
+### GDC calls with MC3 NonExonic filter: 
+```{r}
+gdc_calls <- remaining_gdc_tbl %>% filter(mc3__NonExonic == 1)
+nrow(gdc_calls)
+nrow(gdc_calls) / nrow(gdc_tbl)
+```
+
+```{r}
+gdc_calls %>% filter(gdc_variant_classification %in% c('Intron', 'RNA', "5'Flank", "3'Flank", "IGR")) %>% nrow()
+gdc_calls %>% filter(gdc_variant_classification %in% c('Splice_Region', 'Splice_Site')) %>% nrow()
+```
+
+GDC include the mutation if any predicted effect is exonic.
+```{r}
+calls_nonexonic <- gdc_calls %>% 
+    filter(gdc_variant_classification %in% c('Intron', 'RNA', "5'Flank", "3'Flank", "IGR", 'Splice_Region', 'Splice_Site'))
+
+calls_nonexonic %>% nrow()
+calls_nonexonic %>% 
+    filter(
+        str_detect(gdc_all_effects, 'exon_variant') 
+        | str_detect(gdc_all_effects, 'missense_variant') 
+        | str_detect(gdc_all_effects, 'prime_UTR_variant')
+        | str_detect(gdc_all_effects, 'synonymous_variant')
+        | str_detect(gdc_all_effects, 'frameshift_variant')
+    ) %>% nrow()
+```
+
+```{r}
+calls_nonexonic <- calls_nonexonic %>% filter(!(
+    str_detect(gdc_all_effects, 'exon_variant') 
+    | str_detect(gdc_all_effects, 'missense_variant') 
+    | str_detect(gdc_all_effects, 'prime_UTR_variant')
+    | str_detect(gdc_all_effects, 'synonymous_variant')
+    | str_detect(gdc_all_effects, 'frameshift_variant')
+))
+calls_nonexonic %>% count(gdc_validation_status, mc3_overlap)
+```
+
+Non-exonic calls but exonic in GDC:
+```{r}
+EXONIC_CLASSIFICATIONS <- c('Missense_Mutation', 'Nonsense_Mutation', 'Silent', 'Nonstop_Mutation', "3'UTR", "5'UTR")
+gdc_calls %>% 
+    filter(gdc_variant_classification %in% EXONIC_CLASSIFICATIONS) %>%
+    nrow()
+
+gdc_calls %>% 
+    filter(gdc_variant_classification %in% EXONIC_CLASSIFICATIONS) %>%
+    count(gdc_variant_classification, mc3_variant_classification, sort = TRUE)
+
+gdc_calls %>% 
+    filter(gdc_variant_classification %in% EXONIC_CLASSIFICATIONS) %>%
+    count(gdc_hugo_symbol, mc3_hugo_symbol, sort = TRUE) %>%
+    filter(n >= 10)
+```
+
+Exclude those calls from the rest of the analysis:
+```{r}
+remaining_gdc_tbl <- remaining_gdc_tbl %>% filter(mc3__NonExonic == 0)
+```
+
+
+### GDC calls with MC3 PoN filter:
+```{r}
+gdc_calls <- remaining_gdc_tbl %>% filter(mc3__broad_PoN_v2 == 1)
+nrow(gdc_calls)
+nrow(gdc_calls) / nrow(gdc_tbl)
+```
+
+Some calls also have GDC PoN filter, but were rescued by validation sequencing.
+```{r}
+gdc_calls %>% filter(gdc__panel_of_normals == 1 | gdc_gdc__gdc_pon == 1) %>% nrow
+gdc_calls %>% filter(gdc__panel_of_normals == 1 | gdc_gdc__gdc_pon == 1) %>% 
+    count(gdc_variant_classification, sort = TRUE)
+gdc_calls %>% filter(gdc__panel_of_normals == 1 | gdc_gdc__gdc_pon == 1) %>%
+    count(gdc_validation_status)
+```
+
+Exclude those calls from the rest of the analysis
+```{r}
+remaining_gdc_tbl <- remaining_gdc_tbl %>% filter(mc3__broad_PoN_v2 == 0)
+```
+
+
+### GDC calls with MC3 Target seq BED region:
+```{r}
+gdc_calls <- remaining_gdc_tbl %>% filter(mc3__bitgt == 1)
+nrow(gdc_calls)
+nrow(remaining_gdc_tbl)
+```
+
+```{r}
+gdc_calls %>% count(gdc_validation_status, sort=TRUE)
+```
+
+
+
+
+## MC3
+A quick overview of the filter flags.
+```{r}
+mc3_tbl %>%
+    count(mc3_filter, gdc_filter, gdc_gdc_filter, sort = TRUE) %>%
+    filter(n >= 100)
+```
+
+
+### GDC filter (stage 1)
+```{r}
+mc3_tbl %>% count(gdc_gdc__multiallelic, gdc_gdc__nonselectedaliquot)
+```
+
+```{r}
+mc3_tbl %>% 
+    filter(gdc_gdc__nonselectedaliquot == 1 | gdc_gdc__multiallelic == 1) %>%
+    count(cancer_type, sort=TRUE)
+```
+
+```{r}
+remaining_mc3_tbl <- mc3_tbl %>% 
+    filter(gdc_gdc__multiallelic == 0 & gdc_gdc__nonselectedaliquot == 0)
+```
+
+
+### `gdc_valid_somatic` status
+```{r}
+remaining_mc3_tbl %>% count(gdc_validation_status)
+```
+
+### GDC filter `gdc_filter`
+```{r}
+remaining_mc3_tbl %>% 
+    count(gdc_filter, gdc_gdc_filter, sort = TRUE) %>% 
+    head(20)
+```
+
+Only contains `gdc__PASS` or `gdc__panel_of_normals`
+```{r}
+mc3_calls <- remaining_mc3_tbl %>% 
+    filter(
+        !(gdc_filter %in% c(
+            'PASS', 'panel_of_normals', 
+            'PASS;panel_of_normals', 'panel_of_normals;PASS'
+        )
+    )
+) 
+nrow(mc3_calls)
+nrow(mc3_calls) / nrow(mc3_tbl)
+```
+
+```{r}
+mc3_calls %>% filter(gdc__t_lod_fstar == 1) %>% nrow()
+mc3_calls %>% filter(gdc__bSeq == 1) %>% nrow()
+mc3_calls %>% filter(gdc__oxog == 1) %>% nrow()
+
+mc3_calls %>% 
+    filter(gdc__t_lod_fstar == 1 | gdc__bSeq == 1 | gdc__oxog == 1) %>% nrow()
+```
+
+OxoG definition
+```{r}
+mc3_calls %>% filter(gdc__oxog == 1) %>% count(mc3__oxog)
+```
+
+
+```{r}
+mc3_calls %>%
+    filter(
+        gdc__Tier1 == 1 | gdc__Tier2 == 1 | gdc__Tier3 == 1 |
+            gdc__Tier4 == 1 | gdc__Tier5 == 1
+    ) %>%
+    nrow()
+```
+
+```{r}
+mc3_calls %>% filter(gdc__clustered_events == 1) %>% nrow()
+```
+
+Select calls of `PASS` or `panel_of_normals` only
+```{r}
+remaining_mc3_tbl <- remaining_mc3_tbl %>% 
+    filter(gdc_filter %in% c(
+        'PASS', 'panel_of_normals', 
+        'PASS;panel_of_normals', 'panel_of_normals;PASS'
+    ))
+```
+
+
+### GDC filter (`gdc_gdc_filter`)
+```{r}
+remaining_mc3_tbl %>%
+    count(gdc_gdc__ndp, gdc_gdc__NonExonic, gdc_gdc__bitgt, gdc_gdc__gdc_pon)
+```
+
+```{r}
+remaining_mc3_tbl <- remaining_mc3_tbl %>% 
+    filter(gdc_gdc__ndp == 0 & gdc_gdc__NonExonic == 0 & gdc_gdc__bitgt == 0 & gdc_gdc__gdc_pon == 0)
+```
+
+
+### dbSNP status
+```{r}
+remaining_mc3_tbl %>% count(gdc_dbsnp_rs == 'novel')
+```
