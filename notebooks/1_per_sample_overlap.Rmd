@@ -75,3 +75,26 @@ ggplot(per_sample_overlap, aes(x=gdc_shared_percent, y=mc3_shared_percent, size=
 
 ggsave('../figures/GDC_MC3_overlap_per_sample.pdf', width = 9, height = 8.5)
 ```
+
+
+```{r}
+concord_tbl <- group_by(overlap_tbl, tumor_sample_barcode) %>%
+    summarize(
+        perc_concordnance= sum(shared_by_gdc_mc3) / n(),
+        cancer_type = cancer_type[1]  # same for all rows of a sample
+    )
+```
+
+```{r}
+concord_tbl %>%
+    pull(perc_concordnance) %>%
+    mean()
+```
+
+```{r}
+concord_tbl %>%
+    filter(cancer_type != 'LAML') %>%
+    pull(perc_concordnance) %>%
+    mean()
+```
+
