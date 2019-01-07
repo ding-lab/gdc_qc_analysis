@@ -319,3 +319,8 @@ remaining_mc3_tbl <- remaining_mc3_tbl %>%
 ```{r}
 remaining_mc3_tbl %>% count(gdc_dbsnp_rs == 'novel')
 ```
+
+```{r}
+remaining_mc3_tbl %>% count(str_detect(gdc_dbsnp_rs, '^rs'))
+```
+
