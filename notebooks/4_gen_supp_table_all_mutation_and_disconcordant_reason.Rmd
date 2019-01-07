@@ -1,0 +1,225 @@
+---
+title: "Generate the supplementary table to explain the disconcordance reason"
+output: html_notebook
+---
+
+This is the script to generate the supplementary table of all mutations (SNVs) in GDC and MC3 public calls and assign reasons to individual mutations why they did not appear in the public call set of the other group.
+
+In the supplementary table, we only include the following columns:
+
+- chromosome
+- start_position
+- end_position
+- cancer_type
+- tumor_sample_barcode
+- reference_allele
+- tumor_seq_allele_1
+- tumor_seq_allele_2
+- hgvsc
+- hgvsp
+- variant_classification
+- variant_type
+- hugo_symbol
+- transcript_id
+- concordance_status
+- reason_not_included_in_public_mc3
+- reason_not_included_in_public_gdc
+
+Readers should be able to pin point the same mutation call in the original files released by both groups using the provided columns in the table.
+
+Load necessary packages:
+```{r}
+library(tidyverse)
+library(DBI)
+library(RSQLite)
+```
+
+Connect to the database
+```{r}
+conn = dbConnect(RSQLite::SQLite(), dbname='../processed_data/all_variants.sqlite')
+dbExecute(conn, 'PRAGMA cache_size=-4000000')
+dbExecute(conn, 'PRAGMA temp_store=MEMORY')
+dbExecute(conn, 'PRAGMA query_only=1')
+dbListTables(conn)
+```
+
+Load all public SNV calls.
+```{r}
+all_public_snp_tbl <- dbReadTable(conn, 'full_overlap') %>%
+    as.tibble() %>%
+    filter(mc3_variant_type == 'SNP' | gdc_variant_type == 'SNP')
+```
+
+
+## Concordant calls (shared by GDC and MC3)
+These SNV calls were shared by GDC and MC3, so we just add it directly to the supplementary table. We prefer the information provided by GDC.
+```{r}
+supp_tbl <- all_public_snp_tbl %>%
+    filter(shared_by_gdc_mc3 == 1) %>%
+    select(
+        chromosome, start_position, end_position, tumor_sample_barcode, cancer_type,
+        reference_allele, tumor_seq_allele1=gdc_tumor_seq_allele1, tumor_seq_allele2,
+        hgvsc=gdc_hgvsc, hgvsp=gdc_hgvsp, 
+        variant_classification=gdc_variant_classification, variant_type=gdc_variant_type,
+        hugo_symbol=gdc_hugo_symbol, transcript_id=gdc_transcript_id
+    ) %>%
+    # Add additional columns
+    mutate(
+        concordance_status = 'shared',
+        reason_not_included_in_public_gdc = NA_character_,
+        reason_not_included_in_public_mc3 = NA_character_
+    )
+
+supp_tbl %>% head()
+```
+
+## Unrecoverable unique calls
+These calls are the mutation calls only reported by the callers of one group but not in the other group.
+```{r}
+gdc_unrecoverable_unique_tbl <- read_tsv(
+    '../processed_data/gdc_not_recoverable_unique_variants.tsv.gz',
+    col_types = cols(
+        .default = col_character(),
+        start_position = col_integer(), end_position = col_integer(),
+        mc3_t_depth = col_integer(), mc3_t_ref_count = col_integer(), mc3_t_alt_count = col_integer(),
+        mc3_n_depth = col_integer(), mc3_n_ref_count = col_integer(), mc3_n_alt_count = col_integer()
+    ),
+    progress = FALSE
+) %>% filter(gdc_variant_type == 'SNP')
+
+mc3_unrecoverable_unique_tbl <- read_tsv(
+    '../processed_data/mc3_not_recoverable_unique_variants.tsv.gz',
+    col_types = cols(
+        .default = col_character(),
+        start_position = col_integer(), end_position = col_integer(),
+        mc3_t_depth = col_integer(), mc3_t_ref_count = col_integer(), mc3_t_alt_count = col_integer(),
+        mc3_n_depth = col_integer(), mc3_n_ref_count = col_integer(), mc3_n_alt_count = col_integer()
+    ),
+    progress = FALSE
+) %>% filter(mc3_variant_type == 'SNP')
+```
+
+Unrecoverable GDC-unique calls are only called in gdc. They could be not called at all in MC3, or they were of bad quality (pre-filtering) in MC3.
+```{r}
+current_mut_tbl <- gdc_unrecoverable_unique_tbl %>%
+     select(
+        chromosome, start_position, end_position, tumor_sample_barcode, cancer_type,
+        reference_allele, tumor_seq_allele1=gdc_tumor_seq_allele1, tumor_seq_allele2,
+        hgvsc=gdc_hgvsc, hgvsp=gdc_hgvsp, 
+        variant_classification=gdc_variant_classification, variant_type=gdc_variant_type,
+        hugo_symbol=gdc_hugo_symbol, transcript_id=gdc_transcript_id
+    ) %>%
+    # Add additional columns
+    mutate(
+        concordance_status = 'unrecoverable GDC-unique',
+        reason_not_included_in_public_gdc = NA_character_,
+        reason_not_included_in_public_mc3 = 'not called or bad quality in MC3'
+    )
+
+current_mut_tbl %>% head()
+```
+
+Add them into the supplementary table.
+```{r}
+supp_tbl <- bind_rows(supp_tbl, current_mut_tbl)
+```
+
+
+Unrecoverable MC3-unique calls are only called in MC3. 
+```{r}
+current_mut_tbl <- mc3_unrecoverable_unique_tbl %>%
+     select(
+        chromosome, start_position, end_position, tumor_sample_barcode, cancer_type,
+        reference_allele, tumor_seq_allele1=mc3_tumor_seq_allele1, tumor_seq_allele2,
+        hgvsc=mc3_hgvsc, hgvsp=mc3_hgvsp, 
+        variant_classification=mc3_variant_classification, variant_type=mc3_variant_type,
+        hugo_symbol=mc3_hugo_symbol, transcript_id=mc3_transcript_id
+    ) %>%
+    # Add additional columns
+    mutate(
+        concordance_status = 'unrecoverable MC3-unique',
+        reason_not_included_in_public_gdc = 'not called in GDC',
+        reason_not_included_in_public_mc3 = NA_character_
+    )
+
+current_mut_tbl %>% head()
+```
+
+Add them into the supplementary table.
+```{r}
+supp_tbl <- bind_rows(supp_tbl, current_mut_tbl)
+```
+
+
+## Recoverable unique calls 
+These calls only appear in the public call of one group, but they could be found in the pre-filter calls (protected calls) of the other group. This implies they were excluded during the filtering. Here we assign the reason why each call was filtered.
+Read recoverable unique calls.
+
+```{r}
+gdc_unique_recoverable_tbl <- read_tsv(
+    '../processed_data/gdc_recoverable_unique_variants.tsv.gz',
+    col_types = cols(
+        .default = col_character(),
+        start_position = col_integer(), end_position = col_integer(),
+        mc3_t_depth = col_integer(), mc3_t_ref_count = col_integer(), mc3_t_alt_count = col_integer(),
+        mc3_n_depth = col_integer(), mc3_n_ref_count = col_integer(), mc3_n_alt_count = col_integer(),
+        overlap_rowid = col_integer(), gdc_rowid = col_integer(), mc3_protected_rowid = col_integer()
+    ),
+    progress = FALSE
+)
+gdc_filters_tbl <- read_tsv(
+    '../processed_data/gdc_recoverable_unique_variants.filter_cols.tsv.gz',
+    progress = FALSE
+) 
+mc3_unique_recoverable_tbl <- read_tsv(
+    '../processed_data/mc3_recoverable_unique_variants.tsv.gz',
+        col_types = cols(
+        .default = col_character(),
+        start_position = col_integer(), end_position = col_integer(),
+        mc3_t_depth = col_integer(), mc3_t_ref_count = col_integer(), mc3_t_alt_count = col_integer(),
+        mc3_n_depth = col_integer(), mc3_n_ref_count = col_integer(), mc3_n_alt_count = col_integer(),
+        overlap_rowid = col_integer(), mc3_rowid = col_integer(), gdc_protected_rowid = col_integer()
+    ),
+    progress = FALSE
+)
+mc3_filters_tbl <- read_tsv(
+    '../processed_data/mc3_recoverable_unique_variants.filter_cols.tsv.gz',
+    progress = FALSE
+)
+
+# Merge with its filter columns
+gdc_tbl <- bind_cols(gdc_unique_recoverable_tbl, gdc_filters_tbl) %>%
+    rename(gdc_filter_raw = gdc_filter, gdc_gdc_filter_raw = gdc_gdc_filter,
+           gdc_filter = gdc_filter_unique, gdc_gdc_filter = gdc_gdc_filter_unique) %>%
+    filter(gdc_variant_type == 'SNP')
+mc3_tbl <- bind_cols(mc3_unique_recoverable_tbl, mc3_filters_tbl) %>%
+    rename(gdc_filter_raw = gdc_filter, gdc_gdc_filter_raw = gdc_gdc_filter,
+       gdc_filter = gdc_filter_unique, gdc_gdc_filter = gdc_gdc_filter_unique) %>%
+    filter(mc3_variant_type == 'SNP')
+```
+
+Since one mutation call may appear multiple times in the protected calls of two groups if different callers reported different allele frequence (which would be two calls), we de-duplicate the records back.
+```{r}
+gdc_tbl <- gdc_tbl %>% distinct(gdc_rowid, .keep_all = TRUE)
+mc3_tbl <- mc3_tbl %>% distinct(mc3_rowid, .keep_all = TRUE)
+```
+
+### Recoverable GDC-unique calls
+The major reason a mutation call was filtered in MC3 was the one-caller constraint
+```{r}
+gdc_tbl %>% 
+    filter(mc3_ncallers == 1) %>% 
+    select(
+        chromosome, start_position, end_position, tumor_sample_barcode, cancer_type,
+        reference_allele=gdc_reference_allele, tumor_seq_allele1=gdc_tumor_seq_allele1, tumor_seq_allele2,
+        hgvsc=gdc_hgvsc, hgvsp=gdc_hgvsp, 
+        variant_classification=gdc_variant_classification, variant_type=gdc_variant_type,
+        hugo_symbol=gdc_hugo_symbol, transcript_id=gdc_transcript_id
+    ) %>%
+    head()
+```
+
+```{r}
+colnames(gdc_tbl)
+```
+
