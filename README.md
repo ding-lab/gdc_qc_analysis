@@ -14,7 +14,7 @@ The mutation matching (overlap) is done inside a SQLite database. Note that a la
 
 Conda environment setup:
 
-    conda create -n gdc_qc python=3.6 notebook matplotlib sqlalchmey pandas snakemake
+    conda create -n gdc_qc python=3.6 notebook sqlalchmey pandas snakemake
 
 We also need to create another conda env for crossmap (since it uses Python 2.7) to lift over the genomic coordinates:
 
@@ -26,14 +26,19 @@ Config file `config.yaml` contains various file paths which should be modified b
     - `public`: Path to the public MC3 MAF
     - `controlled`: Path to the controlled MAF
 - `GDC_DATA_ROOT`: Path to the folder containing all the GDC MAFs. The folder structure is the default structure which the offical [GDC Data Transfer Tool][gdc-client] creates. That is, the GDC MAFs are under `<GDC_DATA_ROOT>/<file UUID>/<file name>.maf.gz`
-- `CHAIN_PTH`: the lift over chain file (GRCh37 to GRCh38)
+- `CHAIN_PTH`: Path to the lift over chain file (GRCh37 to GRCh38)
 
 
 ## Build the database and generate the mutation overlap tables
-Now the pipeline is managed by Snakemake:
+The pipeline is managed by Snakemake:
 
     snakemake -l            # List all the possible rules
     snakemake all           # Generate both the database and overlap files
+
+For example, to run the full pipeline, 
+
+    conda activate gdc_qc
+    snakemake all
 
 The pipeline will generate the following files under `processed_data`:
 
