@@ -97,6 +97,7 @@ rule add_protected_mafs_to_db:
 
 
 rule extract_recoverable_tables:
+    """Extract recoverable unique calls."""
     input:
         db='processed_data/all_variants.sqlite',
         db_state='processed_data/db_state/has_added_protected_mafs'
@@ -109,6 +110,7 @@ rule extract_recoverable_tables:
 
 
 rule extract_filter:
+    """Parse and extract the filters of the recoverable unique calls."""
     input: 'processed_data/{grp}_recoverable_unique_variants.tsv.gz'
     output: 'processed_data/{grp}_recoverable_unique_variants.filter_cols.tsv.gz'
     shell:
@@ -118,7 +120,7 @@ rule extract_filter:
 rule all:
     input:
         'processed_data/mc3.public.converted.GRCh38.maf.gz',
-        # 'processed_data/mc3.controlled.converted.GRCh38.maf.gz',
+        'processed_data/mc3.controlled.converted.GRCh38.maf.gz',
         'processed_data/db_state/has_added_protected_mafs',
         expand('processed_data/{grp}_recoverable_unique_variants.tsv.gz', grp=['gdc', 'mc3']),
         expand('processed_data/{grp}_recoverable_unique_variants.filter_cols.tsv.gz', grp=['gdc', 'mc3']),
