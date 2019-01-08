@@ -1,3 +1,4 @@
+notebooks/archived/* linguist-detectable=false
 *.nb.html linguist-generated=true
 figures/* linguist-generated=true
 *.sql     linguist-detectable=true
