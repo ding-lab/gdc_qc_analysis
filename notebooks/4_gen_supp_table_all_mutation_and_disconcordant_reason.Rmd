@@ -45,7 +45,7 @@ dbListTables(conn)
 
 Load all public SNV calls.
 ```{r}
-all_public_snp_tbl <- dbReadTable(conn, 'full_overlap') %>%
+all_public_snv_tbl <- dbReadTable(conn, 'full_overlap') %>%
     as.tibble() %>%
     filter(mc3_variant_type == 'SNP' | gdc_variant_type == 'SNP')
 ```
@@ -54,7 +54,7 @@ all_public_snp_tbl <- dbReadTable(conn, 'full_overlap') %>%
 ## Concordant calls (shared by GDC and MC3)
 These SNV calls were shared by GDC and MC3, so we just add it directly to the supplementary table. We prefer the information provided by GDC.
 ```{r}
-supp_tbl <- all_public_snp_tbl %>%
+supp_tbl <- all_public_snv_tbl %>%
     filter(shared_by_gdc_mc3 == 1) %>%
     select(
         chromosome, start_position, end_position, tumor_sample_barcode, cancer_type,
@@ -72,6 +72,7 @@ supp_tbl <- all_public_snp_tbl %>%
 
 supp_tbl %>% head()
 ```
+
 
 ## Unrecoverable unique calls
 These calls are the mutation calls only reported by the callers of one group but not in the other group.
@@ -151,6 +152,7 @@ supp_tbl <- bind_rows(supp_tbl, current_mut_tbl)
 ```
 
 
+
 ## Recoverable unique calls 
 These calls only appear in the public call of one group, but they could be found in the pre-filter calls (protected calls) of the other group. This implies they were excluded during the filtering. Here we assign the reason why each call was filtered.
 Read recoverable unique calls.
@@ -204,22 +206,248 @@ gdc_tbl <- gdc_tbl %>% distinct(gdc_rowid, .keep_all = TRUE)
 mc3_tbl <- mc3_tbl %>% distinct(mc3_rowid, .keep_all = TRUE)
 ```
 
-### Recoverable GDC-unique calls
-The major reason a mutation call was filtered in MC3 was the one-caller constraint
+Due to some missing columns in `gdc_tbl` and `mc3_tbl`, in this section, we use the `gdc_rowid` or `mc3_rowid` of each mutation call to retrieve their full records from the `all_public_snv_tbl` table.
+
+```{r}
+retreive_full_record <- function(mut_tbl) {
+    mut_tbl %>%
+        select(gdc_rowid) %>%
+        left_join(all_public_snv_tbl, by = 'gdc_rowid') %>%
+        select(
+            gdc_rowid,
+            chromosome, start_position, end_position, tumor_sample_barcode, cancer_type,
+            reference_allele, tumor_seq_allele1=gdc_tumor_seq_allele1, tumor_seq_allele2,
+            hgvsc=gdc_hgvsc, hgvsp=gdc_hgvsp, 
+            variant_classification=gdc_variant_classification, variant_type=gdc_variant_type,
+            hugo_symbol=gdc_hugo_symbol, transcript_id=gdc_transcript_id
+        )
+}
+```
+
+
+
+## Recoverable GDC-unique calls
+
+### One-caller constraint
+The major reason a mutation call was filtered in MC3 was the one-caller constraint.
+```{r}
+current_mut_tbl <- gdc_tbl %>% 
+    filter(mc3_ncallers == 1) %>% 
+    # Select only the rowid as the information will be retrieved from the public SNP table
+    retreive_full_record() %>%
+    # Add additional columns
+    mutate(
+        concordance_status = 'recoverable GDC-unique',
+        reason_not_included_in_public_gdc = NA_character_,
+        reason_not_included_in_public_mc3 = 'called by only one caller'
+    )
+
+current_mut_tbl %>% head()
+```
+
+Double check the record is the same
 ```{r}
 gdc_tbl %>% 
-    filter(mc3_ncallers == 1) %>% 
+    filter(mc3_ncallers == 1) %>%
     select(
-        chromosome, start_position, end_position, tumor_sample_barcode, cancer_type,
-        reference_allele=gdc_reference_allele, tumor_seq_allele1=gdc_tumor_seq_allele1, tumor_seq_allele2,
-        hgvsc=gdc_hgvsc, hgvsp=gdc_hgvsp, 
-        variant_classification=gdc_variant_classification, variant_type=gdc_variant_type,
-        hugo_symbol=gdc_hugo_symbol, transcript_id=gdc_transcript_id
+        chromosome, start_position, end_position, tumor_sample_barcode, cancer_type
     ) %>%
     head()
 ```
 
+Add them into the supplementary table. And exclude the explained calls.
 ```{r}
-colnames(gdc_tbl)
+supp_tbl <- bind_rows(supp_tbl, current_mut_tbl %>% select(-gdc_rowid))
+gdc_tbl <- gdc_tbl %>% filter(!gdc_rowid %in% current_mut_tbl$gdc_rowid)
 ```
+
+### NonExonic filter definition
+The second reason is the different definition of Non-Exonic filter in GDC and MC3. As long as there is one variant effect that is exonic, GDC will keep the call. On the other hand, MC3 will drop the call if the main variant effect is non-exonic.
+```{r}
+current_mut_tbl <- gdc_tbl %>% 
+    # The main effect in MC3 is non-exonic
+    filter(mc3__NonExonic == 1) %>%
+    # The main effect in GDC is also non-exonic, but one of the possible effect is exonic
+    filter(
+        gdc_variant_classification %in% c('Intron', 'RNA', "5'Flank", "3'Flank", "IGR", 'Splice_Region', 'Splice_Site'),
+        str_detect(gdc_all_effects, 'exon_variant') 
+        | str_detect(gdc_all_effects, 'missense_variant') 
+        | str_detect(gdc_all_effects, 'prime_UTR_variant')
+        | str_detect(gdc_all_effects, 'synonymous_variant')
+        | str_detect(gdc_all_effects, 'frameshift_variant')
+    ) %>%
+    # Select only the rowid as the information will be retrieved from the public SNP table
+    retreive_full_record() %>%
+    # Add additional columns
+    mutate(
+        concordance_status = 'recoverable GDC-unique',
+        reason_not_included_in_public_gdc = NA_character_,
+        reason_not_included_in_public_mc3 = 'filtered by NonExonic (different definition)'
+    )
+
+current_mut_tbl %>% head()
+```
+
+Add them into the supplementary table. And exclude the explained calls.
+```{r}
+supp_tbl <- bind_rows(supp_tbl, current_mut_tbl %>% select(-gdc_rowid))
+gdc_tbl <- gdc_tbl %>% filter(!gdc_rowid %in% current_mut_tbl$gdc_rowid)
+```
+
+### Use of validation sequencing
+GDC will promote the call if it can be detected in the validation sequencing
+```{r}
+current_mut_tbl <- gdc_tbl %>% 
+    # The main effect in MC3 is non-exonic
+    filter(mc3__NonExonic == 1) %>%
+    # The main effect in GDC is non-exonic, and all effects are non-exonic
+    filter(
+        gdc_variant_classification %in% c('Intron', 'RNA', "5'Flank", "3'Flank", "IGR", 'Splice_Region', 'Splice_Site'),
+        !(str_detect(gdc_all_effects, 'exon_variant') 
+        | str_detect(gdc_all_effects, 'missense_variant') 
+        | str_detect(gdc_all_effects, 'prime_UTR_variant')
+        | str_detect(gdc_all_effects, 'synonymous_variant')
+        | str_detect(gdc_all_effects, 'frameshift_variant'))
+    ) %>%
+    filter(str_detect(gdc_validation_status, 'Valid'))%>%
+    retreive_full_record() %>%
+    mutate(
+        concordance_status = 'recoverable GDC-unique',
+        reason_not_included_in_public_gdc = NA_character_,
+        reason_not_included_in_public_mc3 = 'filtered by NonExonic (detected in validation sequencing)'
+    )
+
+current_mut_tbl %>% head()
+```
+
+Add them into the supplementary table. And exclude the explained calls.
+```{r}
+supp_tbl <- bind_rows(supp_tbl, current_mut_tbl %>% select(-gdc_rowid))
+gdc_tbl <- gdc_tbl %>% filter(!gdc_rowid %in% current_mut_tbl$gdc_rowid)
+```
+
+### Gene annotation change (Nonexonic in MC3 but exonic in GDC)
+```{r}
+current_mut_tbl <- gdc_tbl %>% 
+    # The main effect in MC3 is non-exonic
+    filter(
+        mc3__NonExonic == 1,
+        gdc_variant_classification %in% c('Missense_Mutation', 'Nonsense_Mutation', 'Silent', 'Nonstop_Mutation', "3'UTR", "5'UTR")
+    ) %>%
+    retreive_full_record() %>%
+    mutate(
+        concordance_status = 'recoverable GDC-unique',
+        reason_not_included_in_public_gdc = NA_character_,
+        reason_not_included_in_public_mc3 = 'filtered by NonExonic (gene annotation change)'
+    )
+
+current_mut_tbl %>% head()
+```
+
+Add them into the supplementary table. And exclude the explained calls.
+```{r}
+supp_tbl <- bind_rows(supp_tbl, current_mut_tbl %>% select(-gdc_rowid))
+gdc_tbl <- gdc_tbl %>% filter(!gdc_rowid %in% current_mut_tbl$gdc_rowid)
+```
+
+### Nonexonic but unknown reason
+The remaing GDC-unique calls were excluded in MC3 due to NonExonic, but we don't know why they made their way to the GDC public calls.
+
+```{r}
+current_mut_tbl <- gdc_tbl %>% 
+    # The main effect in MC3 is non-exonic
+    filter(mc3__NonExonic == 1) %>%
+    retreive_full_record() %>%
+    mutate(
+        concordance_status = 'recoverable GDC-unique',
+        reason_not_included_in_public_gdc = NA_character_,
+        reason_not_included_in_public_mc3 = 'filtered by NonExonic (unknown)'
+    )
+
+current_mut_tbl %>% head()
+```
+
+Add them into the supplementary table. And exclude the explained calls.
+```{r}
+supp_tbl <- bind_rows(supp_tbl, current_mut_tbl %>% select(-gdc_rowid))
+gdc_tbl <- gdc_tbl %>% filter(!gdc_rowid %in% current_mut_tbl$gdc_rowid)
+```
+
+
+### Panel of Normals (PoN) filter
+The calls were excluded because they were also detected in the panel of normal samples. For those also detected in GDC's PoN, they were promoted due to validation sequencing.
+
+```{r}
+current_mut_tbl <- gdc_tbl %>% 
+    filter(
+        mc3__broad_PoN_v2 == 1,
+        !(gdc__panel_of_normals == 1 | gdc_gdc__gdc_pon == 1)
+    ) %>%
+    retreive_full_record() %>%
+    mutate(
+        concordance_status = 'recoverable GDC-unique',
+        reason_not_included_in_public_gdc = NA_character_,
+        reason_not_included_in_public_mc3 = 'filtered by PoN (no PoN filter in GDC)'
+    )
+
+supp_tbl <- bind_rows(supp_tbl, current_mut_tbl %>% select(-gdc_rowid))
+gdc_tbl <- gdc_tbl %>% filter(!gdc_rowid %in% current_mut_tbl$gdc_rowid)
+
+current_mut_tbl <- gdc_tbl %>% 
+    filter(
+        mc3__broad_PoN_v2 == 1,
+        gdc__panel_of_normals == 1 | gdc_gdc__gdc_pon == 1
+    ) %>%
+    retreive_full_record() %>%
+    mutate(
+        concordance_status = 'recoverable GDC-unique',
+        reason_not_included_in_public_gdc = NA_character_,
+        reason_not_included_in_public_mc3 = 'filtered by PoN (detected in validation sequencing)'
+    )
+
+supp_tbl <- bind_rows(supp_tbl, current_mut_tbl %>% select(-gdc_rowid))
+gdc_tbl <- gdc_tbl %>% filter(!gdc_rowid %in% current_mut_tbl$gdc_rowid)
+```
+
+### Design regions of interest of the targeted sequencing
+The remaining calls were excluded since they are out of the ROIs of the targeted sequencing. Most of them were included in GDC due to the validation sequencing.
+```{r}
+current_mut_tbl <- gdc_tbl %>% 
+    filter(
+        mc3__bitgt == 1,
+        str_detect(gdc_validation_status, 'Valid')
+    ) %>%
+    retreive_full_record() %>%
+    mutate(
+        concordance_status = 'recoverable GDC-unique',
+        reason_not_included_in_public_gdc = NA_character_,
+        reason_not_included_in_public_mc3 = 'filtered by bitgt (detected in validation sequencing)'
+    )
+
+supp_tbl <- bind_rows(supp_tbl, current_mut_tbl %>% select(-gdc_rowid))
+gdc_tbl <- gdc_tbl %>% filter(!gdc_rowid %in% current_mut_tbl$gdc_rowid)
+```
+
+```{r}
+current_mut_tbl <- gdc_tbl %>% 
+    filter(mc3__bitgt == 1) %>%
+    retreive_full_record() %>%
+    mutate(
+        concordance_status = 'recoverable GDC-unique',
+        reason_not_included_in_public_gdc = NA_character_,
+        reason_not_included_in_public_mc3 = 'filtered by bitgt (unknown)'
+    )
+
+supp_tbl <- bind_rows(supp_tbl, current_mut_tbl %>% select(-gdc_rowid))
+gdc_tbl <- gdc_tbl %>% filter(!gdc_rowid %in% current_mut_tbl$gdc_rowid)
+```
+
+And we left zero calls unexplained.
+```{r}
+nrow(gdc_tbl)
+```
+
+
+
+## Recoverable MC3-unique calls
 
