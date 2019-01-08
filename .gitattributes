@@ -1,2 +1,4 @@
 analysis/*.nb.html  linguist-generated
+analysis/archived/*.nb.html  linguist-generated
+figures/*  linguist-generated
 *.sql               linguist-detectable=true
