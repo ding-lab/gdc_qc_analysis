@@ -645,10 +645,23 @@ supp_tbl <- supp_tbl %>%
     mutate(
         chromosome = factor(chromosome, c(str_c('chr', seq(1, 22)), 'chrX', 'chrY', 'chrM')),
         hgvsc = str_replace(replace_na(hgvsc, ''), '^\\.$', ''),
-        hgvsp = str_replace(replace_na(hgvsp, ''), '^\\.$', '')
+        hgvsp = str_replace(replace_na(hgvsp, ''), '^\\.$', ''),
+        reason_not_included_in_public_gdc = str_replace_na(reason_not_included_in_public_gdc, ''),
+        reason_not_included_in_public_mc3 = str_replace_na(reason_not_included_in_public_mc3, '')
+    ) %>%
+    mutate(
+        # Convert p.%3D to p.=
+        hgvsp = str_replace(hgvsp, 'p\\.%3D', 'p.=')
     ) %>%
     arrange(chromosome, start_position, -end_position, cancer_type, tumor_sample_barcode)
 
 write_tsv(supp_tbl, '../processed_data/supplementary_table.tsv.gz')
+
+supp_tbl %>%
+    # Remove shared calls to shrink the output file size
+    filter(
+        concordance_status != 'shared'
+    ) %>%
+    write_tsv('../processed_data/supplementary_table.nonconcordant_only.tsv.gz')
 ```
 
