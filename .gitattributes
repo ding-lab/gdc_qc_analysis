@@ -1,4 +1,4 @@
-analysis/*.nb.html  linguist-generated
-analysis/archived/*.nb.html  linguist-generated
-figures/*  linguist-generated
-*.sql               linguist-detectable=true
+analysis/*.nb.html          linguist-generated=true
+analysis/archived/*.nb.html linguist-generated=true
+figures/*                   linguist-generated=true
+*.sql                       linguist-detectable=true
