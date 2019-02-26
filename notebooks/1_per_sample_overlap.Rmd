@@ -19,7 +19,7 @@ dbListTables(conn)
 
 Read overlap 
 ```{r}
-overlap_tbl <- as.tibble(dbReadTable(conn, 'full_overlap')) %>%
+overlap_tbl <- as_tibble(dbReadTable(conn, 'full_overlap')) %>%
         filter(mc3_variant_type == 'SNP' | gdc_variant_type == 'SNP')
 ```
 

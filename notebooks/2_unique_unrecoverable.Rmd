@@ -73,7 +73,7 @@ mc3_per_caller_wga_tbl <- mc3_tbl %>%
     mutate(percentage_unrecoverable = num_unrecoverable_mut / sum(num_unrecoverable_mut) * 100) %>%
     ungroup() %>%
     full_join(
-        as.tibble(dbGetQuery(
+        as_tibble(dbGetQuery(
             conn, 
             "
             WITH tab AS (
@@ -243,7 +243,7 @@ gdc_per_caller_wga_tbl <- gdc_tbl %>%
     mutate(percentage_unrecoverable = num_unrecoverable_mut / sum(num_unrecoverable_mut) * 100) %>%
     ungroup() %>%
     full_join(
-        as.tibble(dbGetQuery(
+        as_tibble(dbGetQuery(
             conn, 
             "
             WITH shared AS (

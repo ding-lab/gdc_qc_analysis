@@ -46,7 +46,7 @@ dbListTables(conn)
 Load all public SNV calls.
 ```{r}
 all_public_snv_tbl <- dbReadTable(conn, 'full_overlap') %>%
-    as.tibble() %>%
+    as_tibble() %>%
     filter(mc3_variant_type == 'SNP' | gdc_variant_type == 'SNP')
 ```
 
