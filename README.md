@@ -52,7 +52,10 @@ The pipeline will generate the following files under `processed_data`:
 
 
 ## Analysis and figures
-Use R to run the notebooks under `notebook` in order to generate all the results and figures. R packages `tidyverse` and `RSQLite` are required.
+Use R to run the notebooks under `notebook` in order to generate all the results and figures. R packages `tidyverse` and `RSQLite` are required. R Docker images such as [rocker/tidyverse] and [lbwang/rocker-genome] contain all the dependencies to run the analysis.
+
+[rocker/tidyverse]: https://hub.docker.com/r/rocker/tidyverse
+[lbwang/rocker-genome]: https://hub.docker.com/r/lbwang/rocker-genome
 
 
 ## Internal information for Ding Lab
