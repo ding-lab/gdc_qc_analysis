@@ -4,6 +4,6 @@ MC3_MAF_PTHS:
 
 GDC_DATA_ROOT: '/diskmnt/Datasets/TCGA/GDC_GRCh38/Release_10.0'
 
-CROSS_MAP_BIN: '~/miniconda3/envs/crossmap/bin/CrossMap.py'
+CROSS_MAP_BIN: '~/miniconda3/envs/gdc_qc/bin/CrossMap.py'
 
 CHAIN_PTH: '/diskmnt/Datasets/TCGA/MC3/GRCh38_liftOver/GRCh37_to_GRCh38.chain.gz'
