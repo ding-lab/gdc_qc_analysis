@@ -1,0 +1,146 @@
+---
+title: "Calculate the concordance rate in different genome region"
+output: html_notebook
+---
+
+We use a sliding window approach to count the concordance rate.
+
+    ------------------------------- genome (chromosome)
+    |<--- window --->|
+          |<--- window --->|
+                |<--- window --->|
+    |<-------------->|  window size (bp)
+    |<--->|             step size (bp)
+    
+```{r, message=FALSE}
+library(tidyverse)
+library(DBI)
+library(RSQLite)
+library(GenomicRanges)
+library(gtrellis)
+```
+
+The bundled SQLite version is too old to include the window function support (3.26+).
+```{r}
+RSQLite::rsqliteVersion()
+```
+
+Connect to the database
+```{r}
+conn = dbConnect(
+    RSQLite::SQLite(), 
+    dbname='../processed_data/all_variants.sqlite',
+    cache_size = -4000000,  # use 4GB RAM,
+    flags = RSQLite::SQLITE_RO
+)
+dbExecute(conn, 'PRAGMA temp_store=MEMORY')
+dbListTables(conn)
+```
+
+Read in the overlap table of all public SNVs:
+```{r}
+all_public_snv_tbl <- dbReadTable(conn, 'full_overlap') %>%
+    as_tibble() %>%
+    filter(mc3_variant_type == 'SNP' | gdc_variant_type == 'SNP')
+```
+
+Load the GDC genome seqinfo
+```{r}
+gdc_seqinfo <- readRDS('../annotations/seqinfo_GRCh38.d1.vd1.rds')
+gdc_seqinfo_in_use <- gdc_seqinfo[c(str_c('chr', 1:22), 'chrX', 'chrY', 'chrM')]
+```
+
+Convert the SNVs into a GRanges object
+```{r}
+snv_gr <- all_public_snv_tbl %>%
+    select(chromosome, start_position, end_position, cancer_type, shared_by_gdc_mc3, only_in_gdc, only_in_mc3) %>%
+    makeGRangesFromDataFrame(
+        keep.extra.columns = TRUE,
+        start.field = 'start_position',
+        end.field = 'end_position'
+    )
+```
+
+Create sliding windows
+```{r}
+window_size = 1000  # 1kb
+step_size = 500  # 0.5kb
+sliding_windows_gr <- slidingWindows(
+    as(gdc_seqinfo_in_use, 'GRanges'), 
+    width = window_size, 
+    step = step_size
+) %>%
+    unlist(use.names = FALSE)
+```
+
+```{r}
+sliding_windows_gr
+```
+
+Find the overlap of sliding windows over the SNVs, and merge the overlap result with the SNVs's metadata columns
+```{r}
+overlap <- findOverlaps(sliding_windows_gr, snv_gr, ignore.strand = TRUE) %>%
+    as_tibble() %>%
+    # use subjectHits to reorder the metadata (which allow repeats)
+    bind_cols(mcols(snv_gr)[.$subjectHits, ] %>% as_tibble())
+
+overlap %>% head()
+```
+
+Summarize the overlap per window. Select COAD calls only
+```{r}
+per_window_stat_tbl <- overlap %>% 
+    filter(cancer_type == 'COAD') %>%
+    group_by(queryHits) %>%
+    summarize(
+        num_shared = sum(shared_by_gdc_mc3),
+        num_gdc = sum(only_in_gdc),
+        num_mc3 = sum(only_in_mc3),
+        total = num_shared + num_gdc + num_mc3,
+        concord = num_shared / total 
+    )
+```
+
+Subset the windows to those with at least one SNV overlap, and added the overlap information as the metadata
+```{r}
+overlap_per_window_gr <- sliding_windows_gr[per_window_stat_tbl$queryHits]
+mcols(overlap_per_window_gr) <- per_window_stat_tbl %>% select(-queryHits)
+overlap_per_window_gr
+```
+
+Plot the raw data out
+```{r, fig.width=12, fig.height=5}
+gtrellis_layout(
+    species = "hg38", 
+    nrow = 3, compact = TRUE,
+    add_name_track = TRUE,
+    track_ylim = c(c(-0.1, 1.1))
+)
+add_points_track(
+    overlap_per_window_gr, 
+    overlap_per_window_gr$concord, 
+    gp = gpar(col = "black")
+)
+```
+
+Filter the windows with >= 10 SNV overlaps.
+```{r, fig.width=12, fig.height=5}
+plot_gr <- subset(overlap_per_window_gr, total >= 5)
+gtrellis_layout(
+    species = "hg38", 
+    nrow = 3, compact = TRUE,
+    add_name_track = TRUE,
+    track_ylim = c(c(-0.1, 1.1)),
+    gap = unit(1, "mm")
+)
+add_points_track(
+    plot_gr, 
+    plot_gr$concord, 
+    gp = gpar(col = "black")
+)
+```
+
+```{r}
+subset(overlap_per_window_gr, total >= 20 & concord < 0.4) %>%
+    as_tibble()
+```
