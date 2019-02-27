@@ -61,7 +61,7 @@ per_sample_overlap <- group_by(overlap_tbl, tumor_sample_barcode) %>%
     arrange(cancer_type)
 ```
 
-```{r, fig.width=9, fig.asp=0.9, fig.dpi=300}
+```{r, fig.width=7, fig.height=7.5, fig.dpi=300}
 ggplot(per_sample_overlap, aes(x=gdc_shared_percent, y=mc3_shared_percent, size=n_total, color=is_wga)) +
     geom_point(alpha=0.65) + 
     scale_x_continuous(name="GDC shared calls", labels = scales::percent) +
@@ -70,10 +70,11 @@ ggplot(per_sample_overlap, aes(x=gdc_shared_percent, y=mc3_shared_percent, size=
     scale_size_area(name="Total calls", max_size = 5, breaks = c(10, 100, 1000, 10000), trans='sqrt') + 
     facet_wrap(~ cancer_type, nrow = 2) +
     theme_bw() + 
-    coord_fixed(ratio = 1) + 
-    labs(title = "Somatic mutation call overlap per sample")
+    theme(legend.position = "bottom") +
+    coord_fixed(ratio = 1) 
+    # labs(title = "Somatic mutation call overlap per sample")
 
-ggsave('../figures/GDC_MC3_overlap_per_sample.pdf', width = 9, height = 8.5)
+ggsave('../figures/GDC_MC3_overlap_per_sample.pdf', width = 7, height = 7.5)
 ```
 
 
